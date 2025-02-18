@@ -8,9 +8,10 @@ import re
 import subprocess
 import platform
 import datetime
+from milvus_manager import MilvusManager
 
 # 常量配置
-API_URL = "http://localhost:11434/api/generate"
+API_URL = "http://localhost:11434/api/chat"
 MODEL_NAME = "deepseek-r1:7b"
 COMMAND_PATTERN = re.compile(
     r'^```(?:bash|shell|cmd|sh|powershell)?\s*\n((?:.|\n)*?)\n```$', re.MULTILINE | re.IGNORECASE
@@ -62,8 +63,9 @@ class CommandProcessor:
 class ChatGUI:
     def __init__(self, master):
         self.master = master
+        self.milvus = MilvusManager()
         master.title("DeepSeek 智能终端")
-        master.geometry("1000x800")
+        master.geometry("1280x960")
         
         # 样式配置
         self.style = ttk.Style()
@@ -74,8 +76,53 @@ class ChatGUI:
         self.is_responding = False
         # 添加对话历史记录
         self.conversation_history = []
-        self.conversation_history.append({"role": "system", "content": "你是一个智能终端，请根据用户的指令执行命令并返回结果。如果有信息不全的，请提示用户补充更多你需要的信息"})
+        system_prompt = """作为智能终端助手，请严格遵循以下规则：
 
+            【知识库使用规则】
+            1. 所有检索类问题必须优先从本地知识库查找，知识库结果格式为：
+            {
+                "valid_results": [
+                    {"filename": "文件路径", "text": "匹配文本", "score": 匹配分数},
+                    ...（最多10条）
+                ]
+            }
+
+            2. 回答逻辑分三步处理：
+            (1) 有效性过滤：仅保留score≥0.7的结果（若全低于0.7则视为无匹配）
+            (2) 结果分析：对比用户问题与匹配文本的相关性
+            (3) 响应生成：
+            - 有有效结果时：【直接引用】匹配文本，按格式标注来源
+            - 无有效结果时：明确告知「未在知识库中找到相关记录」
+
+            【响应格式要求】
+            ✅ 正确示例：
+            "Python中连接Milvus的方法是... 
+            【内容出自以下文档：
+            d:/project/milvus_manager.py (score:0.85)
+            d:/docs/milvus_guide.txt (score:0.78)】"
+
+            ❌ 禁止行为：
+            - 解释查找过程（如："我先检索了知识库..."）
+            - 混合知识库内容和外部知识
+            - 修改或重新组织原文内容
+
+            【特殊场景处理】
+            1. 当用户问题需要组合多个知识库条目时，按相关性排序引用
+            2. 若知识库内容明显不相关（如score>0.7但内容不匹配问题），仍如实引用但添加备注
+            3. 代码相关问题必须精确到文件名和代码片段"""
+        self.conversation_history.append({"role": "system", "content": system_prompt})
+        """
+        subprocess.run(
+                ['powershell', '-Command', 'ollama serve'],
+                check=True,
+                shell=True
+        )
+        """
+        subprocess.run(
+                ['powershell', '-Command', f'ollama pull {MODEL_NAME}'],
+                check=True,
+                shell=True
+        )
         # 初始化文件路径
         self._init_file_path()
         
@@ -94,18 +141,52 @@ class ChatGUI:
     def _get_ai_response(self, prompt):
         """获取AI响应（适配多轮对话API）"""
         messages = self.conversation_history.copy()
-        messages.append({"role": "user", "content": prompt})
-        prompt_str = json.dumps(messages, ensure_ascii=False)
-
+        res = self.milvus.search_in_milvus(prompt, 10)
+        #res = [item for item in res if item['score'] > 0.7]  # 增加分数过滤
+        if not res:
+            res_str = "[]"
+        else:
+            res_str = json.dumps({
+                "valid_results": [{
+                    "filename": item['entity']['filename'],
+                    "text": item['entity']['text'],
+                    "score": round(item['score'], 2)
+                } for item in res]
+            }, ensure_ascii=False)
+            #res_str = json.dumps(res, ensure_ascii=False)
+        messages.append({
+            "role": "user",
+            "content": f"""
+                【问题处理指令】
+                请严格按照以下步骤处理：
+                
+                [步骤1] 有效性过滤（score≥0.01）
+                milvus知识库原始数据（JSON）：
+                {res_str}
+                
+                [步骤2] 相关性分析
+                用户问题：{prompt}
+                
+                [步骤3] 响应生成
+                ✅ 必须：
+                - 直接引用匹配文本，保持原文格式
+                - 按规范标注来源（文件路径+分数）
+                - 代码问题需显示完整代码段
+                
+                ❌ 禁止：
+                - 解释处理过程
+                - 补充额外信息
+                - 修改原始内容"""
+        })
         data = {
             "model": MODEL_NAME,
-            "prompt": prompt_str,
+            "messages": messages,
             "stream": True,
-            "temperature": 0.7
+            "temperature": 0.3
         }
 
         try:
-            response = requests.post(API_URL, json=data, stream=True)
+            response = requests.post(API_URL, json=data, stream=False)
             response.raise_for_status()
             full_response = []
             self._update_display(f"智能终端：\n", 'system')
@@ -113,12 +194,11 @@ class ChatGUI:
                 if line:
                     try:
                         json_data = json.loads(line.decode('utf-8'))
-                        if 'response' in json_data:
-                            self._stream_char(json_data['response'])
-                            full_response.append(json_data['response'])
-                        if json_data.get('done', False):
-                            final_response = ''.join(full_response)
-                            self._process_commands(final_response)
+                        if 'message' in json_data:
+                            # 解析 message 字段中的 JSON 数据
+                            message_content = json_data['message'].get('content', '')
+                            self._stream_char(message_content)
+                            full_response.append(message_content)
                     except json.JSONDecodeError:
                         self._show_error("接收到无效响应格式")
 
@@ -127,8 +207,8 @@ class ChatGUI:
             self._process_commands(final_response)
             self.conversation_history.append({"role": "user", "content": prompt})
             self.conversation_history.append({"role": "assistant", "content": final_response})
-            self._save_to_file("user:\n"+prompt+"\n")
-            self._save_to_file("assistant:\n"+final_response+"\n=========================================================================================================================\n")
+            self._save_to_file("user:\n" + prompt + "\n")
+            self._save_to_file("assistant:\n" + final_response + "\n=========================================================================================================================\n")
             self._update_status("就绪")
 
         except requests.RequestException as e:
