@@ -5,7 +5,7 @@ from typing import List
 from pymilvus import (
     connections, FieldSchema, CollectionSchema,
     DataType, Collection, utility, Function,
-    FunctionType, AnnSearchRequest, RRFRanker
+    FunctionType, AnnSearchRequest
 )
 from sentence_transformers import SentenceTransformer
 from langchain_text_splitters import RecursiveCharacterTextSplitter

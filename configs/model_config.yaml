@@ -4,6 +4,20 @@ model_providers:
     endpoint: "http://localhost:11434"
     models:
       default: "deepseek-r1:7b"
+    temperature: 0.8
+    top_p: 0.95
+    max_tokens: 4096
+    
+  huggingface:
+    adapter: adapters.model.hf_pipeline.HuggingFacePipeline
+    model_name: "meta-llama/Llama-2-7b-chat-hf"
+    quantization:
+      enabled: true
+      type: "nf4"
+    generation_params:
+      max_new_tokens: 1024
+      temperature: 0.7
+      top_p: 0.9
       
 logging:
   path: "logs/chat_histories"
@@ -16,7 +30,7 @@ vectordb:
     collection_name: "codebase_kb"
     embed_dim: 384  # 根据实际模型维度配置
 
-qa_model:
+qa_engine:
   model_name: "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
   quantization:
     enabled: true
@@ -27,3 +41,7 @@ qa_model:
     max_new_tokens: 8192
     temperature: 0.7
     search_top_k: 5
+    
+session:
+  storage_path: "./sessions"  # 会话存储目录
+  auto_save_interval: 5       # 自动保存间隔
