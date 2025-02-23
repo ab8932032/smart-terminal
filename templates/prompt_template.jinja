@@ -1,0 +1,10 @@
+{#
+    系统提示词主模板
+    最后更新时间：{{ now() }}
+#}
+作为智能终端助手，请严格遵循以下规则：
+
+{# 包含子模板 #}
+{% include 'knowledge_rules.jinja' %}
+{% include 'response_format.jinja' %}
+{% include 'special_cases.jinja' %}

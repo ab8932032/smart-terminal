@@ -1,0 +1,17 @@
+from jinja2 import Environment, FileSystemLoader
+
+class TemplateManager:
+    _instance = None
+    env = None  # 提升为类变量
+
+    def __new__(cls):
+        if not cls._instance:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    @classmethod
+    def render(cls, template_name: str, context: dict) -> str:
+        if not cls.env:
+            cls.env = Environment(loader=FileSystemLoader("templates"))
+        return cls.env.get_template(template_name).render(context)
+    

@@ -1,0 +1,1 @@
+python -m entrypoints.gui_app

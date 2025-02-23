@@ -1,0 +1,29 @@
+model_providers:
+  ollama:
+    adapter: adapters.model.ollama_adapter.OllamaAdapter
+    endpoint: "http://localhost:11434"
+    models:
+      default: "deepseek-r1:7b"
+      
+logging:
+  path: "logs/chat_histories"
+  level: "INFO"
+
+vectordb:
+  milvus:
+    host: "localhost"
+    port: "19530"
+    collection_name: "codebase_kb"
+    embed_dim: 384  # 根据实际模型维度配置
+
+qa_model:
+  model_name: "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
+  quantization:
+    enabled: true
+    type: "nf4"
+  model_args:
+    attn_implementation: "flash_attention_2"
+  generation:
+    max_new_tokens: 8192
+    temperature: 0.7
+    search_top_k: 5
