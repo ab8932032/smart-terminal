@@ -11,6 +11,7 @@ from utils.config_loader import ModelConfig
 from adapters.frontends.tkinter_gui import TkinterFrontend
 from adapters.frontends.event_bindings import TkinterEventBinder
 
+
 def launch_gui():
     # 加载配置文件
     config = ModelConfig.load()

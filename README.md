@@ -18,6 +18,7 @@ smart-terminal/
 │   ├── vectordb/              # 向量数据库适配器
 │   │   └── milvus_adapter.py  # Milvus数据库操作实现
 │   └── frontends/             # 前端界面适配
+│	  ├── event_bindings.py      # 事件绑定处理
 │       ├── tkinter_gui.py     # Tkinter桌面端实现
 │       └── web_api.py         # Web API接口实现
 │
@@ -25,7 +26,9 @@ smart-terminal/
 │   ├── retrieval_service.py   # 混合检索服务（稠密+稀疏检索）
 │   ├── qa_engine.py           # 问答引擎（多轮对话处理）
 │   ├── process_controller.py  # 流程控制器（多阶段问答控制）
+│   ├── events.py              # 事件类型定义（配合event_bus使用）
 │   └── event_bus.py           # 事件总线（模块间通信）
+│
 │
 ├── services/                  # 辅助服务组件
 │   ├── command_processor.py   # 命令行解析与执行
@@ -34,17 +37,17 @@ smart-terminal/
 │
 ├── utils/                     # 通用工具类
 │   ├── text_processing.py     # 文本清洗/分块处理
-│   ├── template_manager.py    # Jinja2模板引擎封装
+│   ├── template_manager.py    # Jinja2模板引擎封装，管理templates目录下的jinja文件
 │   ├── config_loader.py       # yaml配置文件加载
 │   └── logger.py              # 日志系统配置
 │
 ├── templates/                 # 提示词模板
 │   ├── thought_gen.jinja      # 思考过程生成模板
 │   ├── interim_answer.jinja   # 中间答案生成模板
-    ├── system_prompt.jinja    # 系统提示词主模板 
-    ├── knowledge_rules.jinja  # 知识库规则 
-    ├── response_format.jinja  # 响应格式 
-    └── special_cases.jinja    # 特殊场景
+│   ├── system_prompt.jinja    # 系统提示词主模板 
+│   ├── knowledge_rules.jinja  # 知识库规则 
+│   ├── response_format.jinja  # 响应格式 
+│   └── special_cases.jinja    # 特殊场景
 │
 ├── tests/                     # 单元测试
 │   ├── test_adapters/         # 适配器测试用例

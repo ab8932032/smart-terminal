@@ -1,0 +1,7 @@
+milvus:
+  adapter: adapters.vectordb.milvus_adapter.MilvusAdapter
+  retrieval_params:  # 新增检索参数
+    timeout: 10
+    max_knowledge_results: 5
+    score_threshold: 0.7
+    retrieval_timeout: 30

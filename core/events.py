@@ -14,6 +14,7 @@ class EventType(str, Enum):
     RETRIEVE_KNOWLEDGE = "retrieve_knowledge"   # 数据格式: str (query)
     KNOWLEDGE_RESULT = "knowledge_result"       # 数据格式: List[dict]
     KNOWLEDGE_FILTERED = "knowledge_filtered"   # 数据格式: List[dict]
+    KNOWLEDGE_READY = "knowledge_ready"  # 到知识检索事件部
 
     # 问答生成事件
     GENERATION_START = "generation_start"       # 数据格式: {"question": str}
@@ -30,6 +31,7 @@ class EventType(str, Enum):
     # 历史管理事件
     HISTORY_CLEARED = "history_cleared"   # 数据格式: None
 
-    ESPONSE_CHUNK = "response_chunk"       # 流式响应片段
+    RESPONSE_CHUNK = "response_chunk"       # 流式响应片段
     STREAM_START = "stream_start"           # 流式开始
     STREAM_END = "stream_end"               # 流式结束
+

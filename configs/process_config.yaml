@@ -1,5 +1,3 @@
-
-template:
-  dir: "templates"  # 默认路径
-  cache_size: 500
-  auto_reload: false
+task_control: 
+  max_parallel_pipelines: 5
+  default_command_timeout: 30

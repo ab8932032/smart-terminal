@@ -15,3 +15,7 @@ class BaseModelAdapter(ABC):
     @abstractmethod
     def event_bus(self):
         pass
+
+    @abstractmethod
+    async def stream_chat(self, context: dict):
+        pass

@@ -2,6 +2,9 @@ model_providers:
   ollama:
     adapter: adapters.model.ollama_adapter.OllamaAdapter
     endpoint: "http://localhost:11434"
+    generation_params: # 新增生成参数
+      max_concurrent_tasks: 3
+      timeout: 30
     models:
       default: "deepseek-r1:7b"
     temperature: 0.8
