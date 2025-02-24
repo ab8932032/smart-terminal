@@ -1,7 +1,8 @@
 
 import asyncio
 import json
-from typing import Dict, List, Optional, AsyncGenerator
+from datetime import datetime
+from typing import Dict, List, Optional, AsyncGenerator, Any
 from utils.logger import get_logger
 from core.events import EventType
 from core.retrieval_service import RetrievalService
@@ -31,12 +32,21 @@ class QAEngine:
         self.template_manager = template_manager
         self.config = config.get('qa_engine',{})
 
+    # 添加块处理方法
+    def _format_chunk(self, content: str) -> Dict[str, Any]:
+        """格式化响应块为标准结构"""
+        return {
+            "content": content,
+            "is_final": False,
+            "timestamp": datetime.now().isoformat()
+        }
+    
     async def generate_response(
             self,
             question: str,
             session_id: str,
             stream: bool = False
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[Dict, None]:
         """
         生成问答响应（支持流式）
         :param question: 用户问题
@@ -50,32 +60,29 @@ class QAEngine:
                 "question": question,
                 "session_id": session_id
             })
-
+    
             # 执行知识检索
             search_results = await self._retrieve_knowledge(question)
-
+    
             # 构建提示词
             messages = self._build_prompt_messages(question, search_results)
-
+    
             # 流式生成
-            async for chunk in self.model_adapter.chat(
-                    messages=messages,
-                    stream=stream,
-                    **self.config.get('generation_params', {})
-            ):
-                yield chunk
+            async for raw_chunk in self.model_adapter.chat(...):
+                formatted_chunk = self._format_chunk(raw_chunk)
+                yield formatted_chunk
                 # 实时发布响应块
                 self.model_adapter.event_bus.publish(EventType.RESPONSE_CHUNK, {
-                    "chunk": chunk,
+                    "chunk": formatted_chunk,
                     "session_id": session_id
                 })
-
+    
             # 发布完成事件
             self.model_adapter.event_bus.publish(EventType.GENERATION_COMPLETE, {
                 "session_id": session_id,
                 "status": "success"
             })
-
+    
         except asyncio.CancelledError:
             logger.info("生成任务被取消")
             self.model_adapter.event_bus.publish(EventType.GENERATION_COMPLETE, {
@@ -90,7 +97,7 @@ class QAEngine:
                 "session_id": session_id
             })
             yield "生成响应时发生错误"
-
+    
     async def _retrieve_knowledge(self, question: str) -> List[Dict]:
         """执行混合检索"""
         return await self.retrieval_service.hybrid_search(

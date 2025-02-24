@@ -207,10 +207,10 @@ class ProcessController:
     async def _generate_response(self, ctx: PipelineContext):
         """生成响应流"""
         try:
-            response_stream = self.qa_engine.generate_stream(
+            response_stream = self.qa_engine.generate_response(
                 question=ctx.question,
                 session_id=ctx.session_id,
-                correlation_id=ctx.correlation_id
+                stream=True  # 添加流式开关
             )
 
             async for chunk in response_stream:
@@ -220,12 +220,15 @@ class ProcessController:
             self._publish_error("response_generation", str(e), ctx.question)
 
     def _process_response_chunk(self, chunk: Dict, ctx: PipelineContext):
+        if not isinstance(chunk, dict):
+            raise ValueError(f"无效的响应块类型: {type(chunk)}")
+        # 新增安全过滤
+        chunk["content"] = self.command_processor.filter_response(
+            chunk.get("content", "")
+        )
+
         """处理响应分片"""
         valid_chunk = self._validate_chunk(chunk)
-        # 新增安全过滤
-        valid_chunk["content"] = self.command_processor.filter_response(
-            valid_chunk["content"]
-        )
         
         self.session_manager.append_chunk(ctx.session_id, valid_chunk)
 
@@ -271,7 +274,8 @@ class ProcessController:
 
     def _finalize_response(self, session_id: str) -> str:
         """组装最终响应"""
-        return "".join(self.session_manager.get_response_buffer(session_id))
+        buffer = self.session_manager.get_response_buffer(session_id)
+        return "".join(chunk.get("content", "") for chunk in buffer)
 
     def _save_response_to_session(self, session_id: str, response: str, metadata: Dict):
         """保存响应到会话"""

@@ -142,13 +142,12 @@ class SessionManager:
                 file_path.unlink()
         except Exception as e:
             self.logger.error(f"Failed to delete session file {session_id}: {str(e)}")
-    def append_chunk(self, session_id: str, chunk: str):
+    def append_chunk(self, session_id: str, chunk: Dict):  # 修改参数类型
         """追加流式响应片段"""
         with self._lock:
             if session_id not in self.active_sessions:
                 return
     
-            # 创建缓冲区如果不存在
             if "response_buffer" not in self.active_sessions[session_id]:
                 self.active_sessions[session_id]["response_buffer"] = []
     
