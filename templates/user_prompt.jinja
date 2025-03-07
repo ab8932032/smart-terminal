@@ -1,0 +1,11 @@
+
+{# 用户问题上下文 #}
+用户问题：{{ question }}
+
+{# 知识库检索结果 #}
+{% if knowledge %}
+相关参考资料：
+{% for item in knowledge %}
+- {{ item.content }} (来源：{{ item.source }}, 可信度：{{ item.weight }})
+{% endfor %}
+{% endif %}

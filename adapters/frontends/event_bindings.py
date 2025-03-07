@@ -20,6 +20,7 @@ class TkinterEventBinder:
     def _translate_event(tk_event: Event, std_event: EventType, bus):
         """将Tkinter事件转换为标准事件"""
         event_data = {
+            "session_id": self.session_manager.get_current_session(),
             "source": "tkinter",
             "widget": tk_event.widget,
             "timestamp": tk_event.time,

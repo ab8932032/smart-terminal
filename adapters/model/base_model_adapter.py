@@ -2,6 +2,10 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, AsyncGenerator
 
 class BaseModelAdapter(ABC):
+    def __init__(self, config: dict,event_bus):
+        self.config = config
+        self._event_bus = event_bus
+        
     @abstractmethod
     async def chat(
             self,
@@ -10,12 +14,7 @@ class BaseModelAdapter(ABC):
             **kwargs
     ) -> AsyncGenerator[str, None]:
         pass
-
+    
     @property
-    @abstractmethod
     def event_bus(self):
-        pass
-
-    @abstractmethod
-    async def stream_chat(self, context: dict):
-        pass
+        return self._event_bus

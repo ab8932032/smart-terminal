@@ -1,14 +1,12 @@
 
 import asyncio
-import json
 from datetime import datetime
-from typing import Dict, List, Optional, AsyncGenerator, Any
+from typing import Dict, List, AsyncGenerator, Any
 from utils.logger import get_logger
 from core.events import EventType
 from core.retrieval_service import RetrievalService
 from utils.template_manager import TemplateManager
-from adapters.model.base_adapter import BaseModelAdapter
-from utils.config_loader import ModelConfig
+from adapters.model.base_model_adapter import BaseModelAdapter
 
 logger = get_logger(__name__)
 
@@ -17,23 +15,26 @@ class QAEngine:
             self,
             model_adapter: BaseModelAdapter,
             retrieval_service: RetrievalService,
-            template_manager: TemplateManager,
-            config: ModelConfig = None
+            template_manager: TemplateManager
     ):
         """
         问答引擎服务
         :param model_adapter: 模型适配器实例
         :param retrieval_service: 检索服务实例
         :param template_manager: 模板管理实例
-        :param config: 配置字典
         """
         self.model_adapter = model_adapter
         self.retrieval_service = retrieval_service
         self.template_manager = template_manager
-        self.config = config.get('qa_engine',{})
+        required_templates = ['system_prompt.jinja', 'user_prompt.jinja']
+        for tpl in required_templates:
+            if not self.template_manager.template_exists(tpl):
+                logger.error(f"构建提示词时发生错误,关键模板缺失: {str(tpl)}")
+                raise
 
     # 添加块处理方法
-    def _format_chunk(self, content: str) -> Dict[str, Any]:
+    @staticmethod
+    def _format_chunk(content: str) -> Dict[str, Any]:
         """格式化响应块为标准结构"""
         return {
             "content": content,
@@ -45,10 +46,12 @@ class QAEngine:
             self,
             question: str,
             session_id: str,
+            knowledge: List[Dict],
             stream: bool = False
     ) -> AsyncGenerator[Dict, None]:
         """
         生成问答响应（支持流式）
+        :param knowledge: 
         :param question: 用户问题
         :param session_id: 当前会话ID
         :param stream: 是否启用流式
@@ -61,14 +64,15 @@ class QAEngine:
                 "session_id": session_id
             })
     
-            # 执行知识检索
-            search_results = await self._retrieve_knowledge(question)
-    
             # 构建提示词
-            messages = self._build_prompt_messages(question, search_results)
-    
+            messages = self._build_prompt_messages(question, knowledge)
+
+            chat_generator = await self.model_adapter.chat(  # 添加await获取生成器
+                messages=messages,
+                stream=stream
+            )
             # 流式生成
-            async for raw_chunk in self.model_adapter.chat(...):
+            async for raw_chunk in chat_generator:
                 formatted_chunk = self._format_chunk(raw_chunk)
                 yield formatted_chunk
                 # 实时发布响应块
@@ -82,6 +86,7 @@ class QAEngine:
                 "session_id": session_id,
                 "status": "success"
             })
+            
     
         except asyncio.CancelledError:
             logger.info("生成任务被取消")
@@ -96,40 +101,31 @@ class QAEngine:
                 "message": str(e),
                 "session_id": session_id
             })
-            yield "生成响应时发生错误"
-    
-    async def _retrieve_knowledge(self, question: str) -> List[Dict]:
-        """执行混合检索"""
-        return await self.retrieval_service.hybrid_search(
-            query=question,
-            top_k=self.config.get("search_top_k", 5)
-        )
-
+            yield self._format_chunk("生成响应时发生错误")
     def _build_prompt_messages(self, question: str, search_results: List[Dict]) -> List[Dict]:
-        """构建提示词消息"""
-        system_prompt = self.template_manager.render(
-            "system_prompt.jinja",
-            {
-                "response_rules": self.config.get("response_rules", {}),
-                "allowed_commands": self.config.get("allowed_commands", [])
-            }
-        )
-
-        user_prompt = self.template_manager.render(
-            "user_prompt.jinja",
-            {
-                "question": question,
-                "knowledge": json.dumps(search_results, ensure_ascii=False)
-            }
-        )
-
-        return [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-
-    def update_config(self, new_config: Dict):
-        """动态更新配置"""
-        self.config.update(new_config)
-        logger.info("问答引擎配置已更新")
+        try:
+            # 添加知识可信度提示
+            knowledge_with_credibility = [
+                f"[来源：{res.get('source','未知')} 可信度：{res.get('weight',1.0):.1f}] {res.get('content','')}"
+                for res in search_results
+            ]
         
+            # 更新模板渲染逻辑
+            user_prompt = self.template_manager.render(
+                "user_prompt.jinja",
+                {
+                    "question": question,
+                    "knowledge": "\n".join(knowledge_with_credibility)  # 结构化知识
+                }
+            )
+            
+            """构建提示词消息"""
+            system_prompt = self.template_manager.render("system_prompt.jinja",context={})
+    
+            return [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+        except Exception as e:
+            logger.error(f"构建提示词时发生错误: {str(e)}")
+            raise e

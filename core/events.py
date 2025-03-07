@@ -23,6 +23,8 @@ class EventType(str, Enum):
     # 命令执行事件
     COMMAND_START = "command_start"       # 数据格式: str (command)
     COMMAND_RESULT = "command_result"     # 数据格式: {"status": "success"/"error", ...}
+    COMMAND_SUCCESS = "command_success"
+    COMMAND_ERROR = "command_error"
 
     # 输出事件
     OUTPUT_UPDATE = "output_update"       # 数据格式: str
@@ -34,4 +36,8 @@ class EventType(str, Enum):
     RESPONSE_CHUNK = "response_chunk"       # 流式响应片段
     STREAM_START = "stream_start"           # 流式开始
     STREAM_END = "stream_end"               # 流式结束
+
+    CANCEL_OPERATION = "cancel_operation"
+
+    CONTEXT_MENU = "context_menu"
 

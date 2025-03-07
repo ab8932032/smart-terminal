@@ -1,7 +1,29 @@
-milvus:
-  adapter: adapters.vectordb.milvus_adapter.MilvusAdapter
-  retrieval_params:  # 新增检索参数
-    timeout: 10
-    max_knowledge_results: 5
-    score_threshold: 0.7
-    retrieval_timeout: 30
+
+  
+db_providers:
+  milvus:
+    adapter: adapters.vectordb.milvus_adapter.MilvusAdapter
+    enabled: true
+    retrieval_params: # 新增检索参数
+      timeout: 10
+      max_knowledge_results: 5
+      score_threshold: 0.7
+      retrieval_timeout: 30
+      reranker: 60
+    embedding_model: sentence-transformers/all-MiniLM-L12-v2
+
+    index_params:
+      dense:
+        index_type: IVF_FLAT
+        metric_type: L2
+        search_params: { nlist: 128 }
+      sparse:
+        index_type: SPARSE_INVERTED_INDEX
+        metric_type: BM25
+        search_params:
+          drop_ratio_search：0.1
+
+    host: "localhost"
+    port: "19530"
+    collection_name: "codebase_kb"
+    embed_dim: 384  # 根据实际模型维度配置

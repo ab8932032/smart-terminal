@@ -5,46 +5,45 @@ model_providers:
     generation_params: # 新增生成参数
       max_concurrent_tasks: 3
       timeout: 30
-    models:
-      default: "deepseek-r1:7b"
+    model_name: "deepseek-r1:7b"
     temperature: 0.8
     top_p: 0.95
     max_tokens: 4096
+    enabled: false
     
   huggingface:
     adapter: adapters.model.hf_pipeline.HuggingFacePipeline
-    model_name: "meta-llama/Llama-2-7b-chat-hf"
+    model_name: "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
     quantization:
       enabled: true
       type: "nf4"
-    generation_params:
-      max_new_tokens: 1024
+    model_args:
+      attn_implementation: "flash_attention_2"
+    generation:
+      max_new_tokens: 8192
       temperature: 0.7
-      top_p: 0.9
+      search_top_k: 5
+    generation_params: # 新增生成参数
+      max_concurrent_tasks: 3
+      timeout: 30
+    enabled: true
       
 logging:
   path: "logs/chat_histories"
   level: "INFO"
 
-vectordb:
-  milvus:
-    host: "localhost"
-    port: "19530"
-    collection_name: "codebase_kb"
-    embed_dim: 384  # 根据实际模型维度配置
-
-qa_engine:
-  model_name: "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
-  quantization:
-    enabled: true
-    type: "nf4"
-  model_args:
-    attn_implementation: "flash_attention_2"
-  generation:
-    max_new_tokens: 8192
-    temperature: 0.7
-    search_top_k: 5
-    
 session:
   storage_path: "./sessions"  # 会话存储目录
   auto_save_interval: 5       # 自动保存间隔
+
+
+frontend_providers:
+  tkinter:
+    adapter: adapters.frontends.tkinter_gui.TkinterFrontend
+    enabled: true
+  web:
+    adapter: adapters.frontends.web_frontend.WebFrontend
+    enabled: false
+    host: "127.0.0.1"
+    port: 8000
+    cors_allowed_origins: [ "http://localhost:3000" ]

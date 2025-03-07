@@ -1,5 +1,4 @@
 # core/event_bus.py
-import logging
 from collections import defaultdict
 from typing import Callable, Any
 from concurrent.futures import ThreadPoolExecutor

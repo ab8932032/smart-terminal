@@ -161,3 +161,10 @@ class SessionManager:
         """清空响应缓冲区"""
         if session_id in self.active_sessions:
             self.active_sessions[session_id]["response_buffer"] = []
+
+    def get_current_session(self) -> str:
+        """获取最近活跃的会话ID"""
+        with self._lock:
+            if not self.active_sessions:
+                return self.create_session()
+            return max(self.active_sessions.keys(), key=lambda k: self.active_sessions[k]["metadata"]["last_accessed"])

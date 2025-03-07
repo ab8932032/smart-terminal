@@ -1,5 +1,6 @@
 import os
 import yaml
+from abc import abstractmethod, ABC
 from pathlib import Path
 from typing import Dict, Any
 
@@ -30,15 +31,20 @@ class ConfigLoader:
             
         return pattern.sub(replace_match, config_str)
 
-
-class ModelConfig:
+class BaseConfig(ABC):
     _config: Dict[str, Any] = None
 
     @classmethod
-    def load(cls) -> 'ModelConfig':
+    def load(cls) -> 'BaseConfig':
         if not cls._config:
-            cls._config = ConfigLoader.load_yaml("configs/model_config.yaml")
-        return cls
+            cls._config = ConfigLoader.load_yaml(cls.config_path())
+        return cls()
+
+
+    @classmethod
+    @abstractmethod
+    def config_path(cls) -> str:
+        pass
 
     @classmethod
     def get(cls, key_path: str, default=None) -> Any:
@@ -50,7 +56,11 @@ class ModelConfig:
             return value
         except KeyError:
             return default
-
+class ModelConfig(BaseConfig):
+    @classmethod
+    def config_path(self) -> str:
+        return "configs/model_config.yaml"
+    
     @classmethod
     def model_providers(cls) -> Dict[str, Any]:
         return cls.get('model_providers', {})
@@ -59,3 +69,24 @@ class ModelConfig:
     @classmethod
     def model_logging(cls) -> Dict[str, Any]:
         return cls.get('logging', {})
+
+
+class DBConfig(BaseConfig):
+
+    @classmethod
+    def config_path(self) -> str:
+        return "configs/db_config.yaml"
+
+    @classmethod
+    def milvus(cls) -> Dict[str, Any]:
+        return cls.get('milvus', {})
+
+
+class ProcessConfig(BaseConfig):
+
+    def config_path(self) -> str:
+        return "configs/process_config.yaml"
+
+    @classmethod
+    def task_control(cls) -> Dict[str, Any]:
+        return cls.get('task_control', {})

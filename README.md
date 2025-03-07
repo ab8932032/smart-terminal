@@ -7,23 +7,28 @@ Try to access the local knowledge base through python code while calling the pla
 ## 项目文件结构说明
 smart-terminal/
 ├── configs/                   # 配置文件目录
-│   ├── model_config.yaml      # 模型接入配置（适配器路径、端点地址等）
+│   ├── model_config.yaml      # 模型接入配置（前端、大模型的适配器路径、端点地址等）
 │   ├── db_config.yaml         # 数据库连接配置
+│   ├── retrieval_strategy.yaml# 混合检索策略配置
 │   └── process_config.yaml    # 问答流程控制配置
 │
 ├── adapters/                  # 适配器层实现
 │   ├── model/                 # 大模型适配器
+│   │   ├── base_model_adapter.py  # 大模型抽象类
 │   │   ├── ollama_adapter.py  # Ollama API适配器
 │   │   └── hf_pipeline.py     # HuggingFace Pipeline适配器
 │   ├── vectordb/              # 向量数据库适配器
+│   │   ├── base_vector_db.py  # 数据库抽象类
 │   │   └── milvus_adapter.py  # Milvus数据库操作实现
 │   └── frontends/             # 前端界面适配
-│	  ├── event_bindings.py      # 事件绑定处理
+│	    ├── event_bindings.py  # 事件绑定处理
+│       ├── base_frontend.py   # frontend抽象类
 │       ├── tkinter_gui.py     # Tkinter桌面端实现
 │       └── web_api.py         # Web API接口实现
 │
 ├── core/                      # 核心业务逻辑
 │   ├── retrieval_service.py   # 混合检索服务（稠密+稀疏检索）
+│   ├── ranker_factory.py      # 混合检索ranker工厂，配合retrieval_service使用
 │   ├── qa_engine.py           # 问答引擎（多轮对话处理）
 │   ├── process_controller.py  # 流程控制器（多阶段问答控制）
 │   ├── events.py              # 事件类型定义（配合event_bus使用）
@@ -43,7 +48,7 @@ smart-terminal/
 │
 ├── templates/                 # 提示词模板
 │   ├── thought_gen.jinja      # 思考过程生成模板
-│   ├── interim_answer.jinja   # 中间答案生成模板
+│   ├── user_prompt.jinja     # 用户问题处理模板
 │   ├── system_prompt.jinja    # 系统提示词主模板 
 │   ├── knowledge_rules.jinja  # 知识库规则 
 │   ├── response_format.jinja  # 响应格式 

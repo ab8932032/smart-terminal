@@ -1,62 +1,41 @@
-import os
-import re
 import subprocess
-from typing import List
+from typing import List, Dict, Any
 from pymilvus import (
     connections, FieldSchema, CollectionSchema,
     DataType, Collection, utility, Function,
-    FunctionType, AnnSearchRequest
+    FunctionType, AnnSearchRequest,RRFRanker
 )
-from sentence_transformers import SentenceTransformer
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from adapters.vectordb.base_vector_db import BaseVectorDBAdapter
+from utils.config_loader import ConfigLoader
 from utils.text_processing import TextProcessor
 
-class MilvusAdapter:
+class MilvusAdapter(BaseVectorDBAdapter):
     """Milvus向量数据库适配器，封装所有向量数据库操作"""
     
     _DOCKER_CMD = ["docker", "info"]
-    _MILVUS_START_CMD = ["powershell.exe", "-Command", ".\\standalone.bat start"]
-    _EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L12-v2"
-    _CODEBASE_PATH = '.\\'
-    _COLLECTION_NAME = "codebase_kb"
+    _MILVUS_START_CMD = ["powershell.exe", "-Command", ".\\standalone.bat restart"]
 
-    def __init__(self, codebase_path=None):
+    def __init__(self, config = Dict[str,Any],codebase_path=None):
         """
         初始化向量数据库适配器
         :param codebase_path: 知识库路径，默认当前目录
+        :param config: 知识库配置
         """
-        
-        self.codebase_path = codebase_path or self._CODEBASE_PATH
+
+        super().__init__(config,codebase_path)
         self._init_components()
         self._load_knowledge_base()
-        self.text_processor = TextProcessor(self.model)
-
+        self.text_processor = TextProcessor()
+    
+    def get_search_params(self, search_type: str) -> dict:
+        """暴露适配器专属参数"""
+        return self.config["search_params"][search_type]
+    
     def _init_components(self):
         """初始化核心组件"""
-        self._init_embedding_model()
-        self._init_text_splitter()
         self._start_services()
         self.collection = self._setup_collection()
-
-    def _init_embedding_model(self):
-        """加载文本嵌入模型"""
-        try:
-            self.model = SentenceTransformer(self._EMBEDDING_MODEL, local_files_only=True)
-        except Exception as e:
-            print(f"本地模型加载失败: {e}, 尝试在线下载...")
-            self.model = SentenceTransformer(self._EMBEDDING_MODEL)
-        
-        print(f"[Model] 嵌入维度: {self.model.get_sentence_embedding_dimension()}")
-        print(f"[Model] 最大序列长度: {self.model.max_seq_length}")
-
-    def _init_text_splitter(self):
-        """初始化文本分块器"""
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=self.model.max_seq_length,
-            chunk_overlap=int(self.model.max_seq_length * 0.1),
-            length_function=lambda x: len(self.model.tokenizer.tokenize(x)),
-            separators=['\n\n```', '\n\n', '\n', ' ', '']
-        )
 
     def _start_services(self):
         """启动依赖服务"""
@@ -65,7 +44,7 @@ class MilvusAdapter:
         
         try:
             subprocess.run(self._MILVUS_START_CMD, check=True)
-            connections.connect("default", host="localhost", port="19530")
+            connections.connect("default", host=self.config["host"], port=self.config["port"])
             print("[Milvus] 服务已启动")
         except subprocess.CalledProcessError as e:
             print(f"[Error] 服务启动失败: {str(e)}")
@@ -73,17 +52,17 @@ class MilvusAdapter:
 
     def _setup_collection(self) -> Collection:
         """配置Milvus集合"""
-        if utility.has_collection(self._COLLECTION_NAME):
-            utility.drop_collection(self._COLLECTION_NAME)
+        if utility.has_collection(self.config['collection_name']):
+            utility.drop_collection(self.config['collection_name'])
 
         # 定义数据结构
         fields = [
             FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
             FieldSchema(name="filename", dtype=DataType.VARCHAR, max_length=255),
             FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, 
-                      dim=self.model.get_sentence_embedding_dimension()),
+                      dim=self.text_processor.model.get_sentence_embedding_dimension()),
             FieldSchema(name="text", dtype=DataType.VARCHAR, 
-                      max_length=self.model.max_seq_length*5, enable_analyzer=True),
+                      max_length=self.text_processor.model.max_seq_length*5, enable_analyzer=True),
             FieldSchema(name="sparse", dtype=DataType.SPARSE_FLOAT_VECTOR)
         ]
 
@@ -99,7 +78,7 @@ class MilvusAdapter:
 
         # 创建并配置集合
         schema = CollectionSchema(fields, description="代码知识库", functions=functions)
-        collection = Collection(self._COLLECTION_NAME, schema)
+        collection = Collection(self.config['collection_name'], schema)
         self._create_indexes(collection)
         return collection
 
@@ -143,19 +122,48 @@ class MilvusAdapter:
         self.collection.flush()
         print(f"[Milvus] 成功插入 {len(entities)} 条数据")
 
-    def search(self, requests: List[AnnSearchRequest], top_k: int,reranker) -> list:
+    def create_dense_search_request(self, query_text, top_k):
+        _, embeddings = self.text_processor.chunk_text(query_text)
+        return AnnSearchRequest(
+            data=embeddings,
+            anns_field="embedding",
+            param=self.config["dense"]["search_params"],
+            limit=top_k
+        )
+
+    def create_sparse_search_request(self, query_text, top_k):
+        return AnnSearchRequest(
+            data=[query_text],
+            anns_field="sparse",
+            param=self.config["sparse"]["search_params"],
+            limit=top_k)
+    def search(self, requests: List[AnnSearchRequest], top_k: int,reranker= None) -> list:
         """
         执行基础检索操作
+        :param reranker: 
         :param requests: 检索请求列表
         :param top_k: 返回结果数量
         """
         return self.collection.hybrid_search(
-            requests=requests,
-            reranker=reranker,
+            reqs=requests,
+            rerank=reranker,
             limit=top_k,
             output_fields=["filename", "text"]
         )
-
+    
+    async def async_search(self, requests: List[AnnSearchRequest], top_k: int, reranker= None) -> list:
+        """
+        执行基础检索操作
+        :param reranker: 
+        :param requests: 检索请求列表
+        :param top_k: 返回结果数量
+        """
+        return self.collection.hybrid_search(
+            reqs=requests,
+            rerank=reranker,
+            limit=top_k,
+            output_fields=["filename", "text"]
+        )
     def _is_docker_running(self) -> bool:
         """检查Docker服务状态"""
         try:
@@ -183,7 +191,7 @@ if __name__ == "__main__":
     adapter = MilvusAdapter()
     sample_requests = [
         AnnSearchRequest(
-            data=adapter.model.encode("如何创建集合"),
+            data=adapter.text_processor.model.encode("如何创建集合"),
             anns_field="embedding",
             param={"metric_type": "L2"},
             limit=3

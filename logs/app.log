@@ -1,0 +1,21 @@
+[2025-03-07 17:21:41] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions
+[2025-03-07 17:23:22] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions
+[2025-03-07 17:23:29] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions
+[2025-03-07 17:28:13] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions
+[2025-03-07 17:30:48] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions
+[2025-03-07 17:33:40] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions
+[2025-03-07 17:42:08] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions
+[2025-03-07 17:45:59] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions
+[2025-03-07 17:46:17] smart_terminal.adapters.model.hf_pipeline - ERROR - 模型加载失败: Using `low_cpu_mem_usage=True` or a `device_map` requires Accelerate: `pip install 'accelerate>=0.26.0'`
+[2025-03-07 17:48:13] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions
+[2025-03-07 17:48:51] smart_terminal.adapters.model.hf_pipeline - ERROR - 模型加载失败: CUDA is required but not available for bitsandbytes. Please consider installing the multi-platform enabled version of bitsandbytes, which is currently a work in progress. Please check currently supported platforms and installation instructions at https://huggingface.co/docs/bitsandbytes/main/en/installation#multi-backend
+[2025-03-07 17:54:39] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions
+[2025-03-07 17:55:36] smart_terminal.adapters.model.hf_pipeline - ERROR - 模型加载失败: CUDA is required but not available for bitsandbytes. Please consider installing the multi-platform enabled version of bitsandbytes, which is currently a work in progress. Please check currently supported platforms and installation instructions at https://huggingface.co/docs/bitsandbytes/main/en/installation#multi-backend
+[2025-03-07 18:04:44] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions
+[2025-03-07 18:05:41] smart_terminal.adapters.model.hf_pipeline - ERROR - 模型加载失败: CUDA is required but not available for bitsandbytes. Please consider installing the multi-platform enabled version of bitsandbytes, which is currently a work in progress. Please check currently supported platforms and installation instructions at https://huggingface.co/docs/bitsandbytes/main/en/installation#multi-backend
+[2025-03-07 18:20:45] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions
+[2025-03-07 18:26:06] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions
+[2025-03-07 18:29:14] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions
+[2025-03-07 18:29:43] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions
+[2025-03-07 18:32:18] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions
+[2025-03-07 18:37:14] smart_terminal.services.session_manager - INFO - Session storage initialized at: sessions

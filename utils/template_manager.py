@@ -1,4 +1,5 @@
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, TemplateNotFound
+
 
 class TemplateManager:
     _instance = None
@@ -14,4 +15,12 @@ class TemplateManager:
         if not cls.env:
             cls.env = Environment(loader=FileSystemLoader("templates"))
         return cls.env.get_template(template_name).render(context)
+
+    def template_exists(self, template_name: str) -> bool:
+        """检查模板是否存在"""
+        try:
+            self.env.get_template(template_name)
+            return True
+        except TemplateNotFound:
+            return False
     

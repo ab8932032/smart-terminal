@@ -4,14 +4,14 @@ import uuid
 from datetime import datetime
 from time import time
 from typing import Dict, Any, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from core.retrieval_service import RetrievalService
 from utils.logger import get_logger
 from core.events import EventType
 from services.command_processor import CommandProcessor
 from services.session_manager import SessionManager
 from core.qa_engine import QAEngine
-from adapters.model.base_adapter import BaseModelAdapter
-from adapters.vectordb.base_vector_db import BaseVectorDBAdapter
 from utils.config_loader import ConfigLoader
 
 logger = get_logger(__name__)
@@ -21,6 +21,8 @@ class PipelineContext:
     session_id: str
     question: str
     correlation_id: str = None
+    task: Optional[asyncio.Task] = None  # 添加任务引用
+    knowledge: list = field(default_factory=list)
 
 class ProcessController:
     def __init__(
@@ -29,18 +31,15 @@ class ProcessController:
             qa_engine: QAEngine,
             command_processor: CommandProcessor,
             session_manager: SessionManager,
-            model_adapter: Optional[BaseModelAdapter] = None,
-            vector_db_adapter: Optional[BaseVectorDBAdapter] = None
+            retrieval_service: Optional[RetrievalService] = None
     ):
+        self.retrieval_service = retrieval_service
         self.event_bus = event_bus
         self.qa_engine = qa_engine
         self.command_processor = command_processor
-        self.model_adapter = model_adapter
-        self.vector_db = vector_db_adapter
         self.session_manager = session_manager
         self._active_tasks = set()
         
-        self.model_config = ConfigLoader.load_yaml("model_config.yaml")['ollama']
         self.db_config = ConfigLoader.load_yaml("db_config.yaml")['milvus']
         self.process_config = ConfigLoader.load_yaml("process_config.yaml")['task_control']
     
@@ -52,8 +51,6 @@ class ProcessController:
         """注册事件处理器"""
         event_mapping = {
             EventType.USER_INPUT: self.handle_user_input,
-            EventType.KNOWLEDGE_RESULT: self.handle_knowledge_result,
-            EventType.COMMAND_RESULT: self.handle_command_result,
             EventType.CLEAR_HISTORY: self.handle_clear_history,
             EventType.CANCEL_OPERATION: self.handle_cancel_operation,
             EventType.GENERATION_COMPLETE: self.handle_generation_complete,
@@ -70,8 +67,6 @@ class ProcessController:
         ))
 
     def handle_clear_history(self, _=None):
-        # 当前实现
-        self.qa_engine.clear_context()
     
         # 需要同步清理会话
         self.session_manager.clear_history(self.session_manager.get_current_session())
@@ -88,7 +83,12 @@ class ProcessController:
         try:
             async with self._task_semaphore:
                 async with asyncio.TaskGroup() as tg:
-                    tg.create_task(self._process_input(ctx))
+                    process_task = tg.create_task(self._process_input(ctx))
+                    ctx.task = process_task
+                    self._active_tasks.add(process_task)
+                    process_task.add_done_callback(
+                        lambda t: self._active_tasks.discard(t)
+                    )
         except Exception as e:
             self._publish_error("input_processing", str(e), ctx.question)
 
@@ -140,8 +140,11 @@ class ProcessController:
             async with asyncio.TaskGroup() as tg:
                 # 创建并自动管理任务
                 pipeline_task = tg.create_task(self._execute_qa_pipeline(ctx))
+                ctx.task = pipeline_task  # 建立反向引用
                 self._active_tasks.add(pipeline_task)
-    
+                pipeline_task.add_done_callback(
+                    lambda t: self._active_tasks.discard(t)
+                )
             # 任务完成后自动移除
             self._active_tasks.discard(pipeline_task)
     
@@ -164,10 +167,26 @@ class ProcessController:
     
         # 知识检索
         knowledge = await self._retrieve_knowledge(ctx)
-    
-        # 生成响应
+        ctx.knowledge = self._enrich_knowledge(knowledge)  # 新增知识增强处理
+
+    # 生成响应
         await self._generate_response(ctx)
+
+    def _enrich_knowledge(self, raw_knowledge: list) -> list:
+        # 1. 添加时效性过滤
+        current_year = datetime.now().year
+        filtered = [k for k in raw_knowledge
+                    if k.get('timestamp', current_year) >= current_year - 2]
     
+        # 2. 添加来源可信度加权
+        source_weights = self.db_config.get("source_weights", {})
+        for item in filtered:
+            item['weight'] = source_weights.get(item['source'], 1.0)
+    
+        # 3. 按相关性+时效性综合排序
+        return sorted(filtered,
+                      key=lambda x: (x['score'] * x['weight']),
+                      reverse=True)
     def _filter_knowledge(self, results: list) -> list:
         """修复后的知识过滤"""
         db_params = self.db_config.get("retrieval_params", {})
@@ -181,23 +200,19 @@ class ProcessController:
         )[:max_results]
     
     async def _retrieve_knowledge(self, ctx: PipelineContext) -> list:
+        if not self.retrieval_service: 
+            self._publish_error("retrieval_error", "VectorDB adapter not initialized")
+            return []
+        
         """知识检索处理"""
         try:
-            results = await asyncio.wait_for(
-                self.vector_db.hybrid_search(
-                    query=ctx.question,
-                    top_k=self.db_config.get("retrieval_params", {}).get("max_knowledge_results", 5)
-                ),
-                timeout=self.db_config.get("retrieval_params", {}).get("timeout", 10)
+            # 通过服务层进行检索
+            raw_results = await self.retrieval_service.hybrid_search(
+                query=ctx.question,
+                top_k=self.db_config.get("max_knowledge_results", 5)
             )
 
-            filtered_results = self._filter_knowledge(results)
-            self.event_bus.publish(EventType.KNOWLEDGE_READY, {
-                "results": filtered_results,
-                "correlation_id": ctx.correlation_id,
-                "session_id": ctx.session_id
-            })
-            return filtered_results
+            return self._filter_knowledge(raw_results)
 
         except asyncio.TimeoutError:
             self._publish_error("retrieval_timeout", "Knowledge retrieval timed out", ctx.question)
@@ -210,6 +225,7 @@ class ProcessController:
             response_stream = self.qa_engine.generate_response(
                 question=ctx.question,
                 session_id=ctx.session_id,
+                knowledge=ctx.knowledge,
                 stream=True  # 添加流式开关
             )
 
@@ -264,8 +280,8 @@ class ProcessController:
 
     def _build_metadata(self, data: Dict) -> Dict:
         """构建响应元数据"""
-        return {
-            "model": self.model_config.get("model_name", "default_model"),
+        return { 
+            "model": self.qa_engine.model_adapter.config.get("model_name", "default_model"),
             "generated_at": datetime.now().isoformat(),
             "response_time": time() - data["start_time"],
             "sources": data.get("sources", []),
@@ -303,7 +319,7 @@ class ProcessController:
         for task in self._active_tasks:
             try:
                 # 获取任务关联的session_id
-                ctx = task.get_coro().cr_frame.f_locals.get('ctx')
+                ctx = getattr(task, 'ctx', None)
                 if ctx and ctx.session_id == target_session:
                     task.cancel()
                 else:

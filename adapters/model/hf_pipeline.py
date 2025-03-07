@@ -1,21 +1,23 @@
 # adapters/model/hf_pipeline.py
-import logging
-from typing import List, Dict
+import asyncio
+from typing import List, Dict, Optional, AsyncGenerator
+
+import torch
 from transformers import pipeline, AutoTokenizer, BitsAndBytesConfig
+
+from adapters.model.base_model_adapter import BaseModelAdapter
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-class HuggingFacePipeline:
-    def __init__(self, config: dict):
+class HuggingFacePipeline(BaseModelAdapter):
+
+    def __init__(self, config: dict,event_bus):
         """
         HuggingFace Pipeline适配器
-        :param config: 包含以下键的配置字典：
-            - model_name: 模型名称或路径
-            - quantization: 量化配置
-            - generation_params: 生成参数
+        :param config: 配置加载器实例
         """
-        self.config = config
+        super().__init__(config,event_bus)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.quant_config = self._init_quant_config()
         self.tokenizer = AutoTokenizer.from_pretrained(config['model_name'])
@@ -50,15 +52,39 @@ class HuggingFacePipeline:
             logger.error(f"模型加载失败: {str(e)}")
             raise
 
-    def generate(self, input_text: str, **kwargs) -> List[Dict]:
+    async def chat(
+            self,
+            messages: List[Dict],
+            stream: bool = False,
+            **kwargs
+    ) -> AsyncGenerator[str, None]:
         """
-        执行文本生成
-        :param input_text: 输入文本
-        :return: 生成结果列表 [{"generated_text": "..."}]
+        执行聊天请求
+        :param messages: 消息历史 [{"role": "user", "content": "..."}]
+        :param stream: 是否启用流式传输
+        :return: 生成响应内容
         """
         try:
+            input_text = self._build_input_text(messages)
             params = {**self.config['generation_params'], **kwargs}
-            return self.pipeline(input_text, **params)
+
+            if stream:
+                for response in await asyncio.to_thread(self.pipeline, input_text, **params):
+                    if response and 'generated_text' in response[0]:
+                        yield response[0]['generated_text']
+                    else:
+                        yield "生成失败，请检查模型配置"
+            else:
+                response = await asyncio.to_thread(self.pipeline, input_text, **params)
+                if response and 'generated_text' in response[0]:
+                    yield response[0]['generated_text']
+                else:
+                    yield "生成失败，请检查模型配置"
+                    
         except Exception as e:
             logger.error(f"生成失败: {str(e)}")
-            return [{"generated_text": "生成失败，请检查模型配置"}]
+            yield "生成失败，请检查模型配置"
+
+    def _build_input_text(self, messages: List[Dict]) -> str:
+        """构建输入文本"""
+        return "\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
