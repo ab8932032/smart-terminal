@@ -59,17 +59,18 @@ class TextProcessor:
     def process_directory(self, directory: str) -> tuple:
         """处理目录中的代码文件"""
         filenames, texts, embeddings = [], [], []
-        
-        for root, _, files in os.walk(directory):
+        absolute_dir = os.path.abspath(directory)
+        for root, _, files in os.walk(absolute_dir):
             for file in files:
                 if not file.endswith('.py'):
                     continue
                 
                 file_path = os.path.join(root, file)
+                _, ext = os.path.splitext(file)
                 with open(file_path, 'r', encoding='utf-8') as f:
                     content = f.read()
                 
-                chunks, chunk_embeddings = self.chunk_text(content, '.py')
+                chunks, chunk_embeddings = self.chunk_text(content, ext)
                 
                 filenames.extend([file_path] * len(chunks))
                 texts.extend(chunks)

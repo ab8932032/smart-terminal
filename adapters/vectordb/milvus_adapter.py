@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 from typing import List, Dict, Any
 from pymilvus import (
     connections, FieldSchema, CollectionSchema,
@@ -14,7 +15,8 @@ class MilvusAdapter(BaseVectorDBAdapter):
     """Milvus向量数据库适配器，封装所有向量数据库操作"""
     
     _DOCKER_CMD = ["docker", "info"]
-    _MILVUS_START_CMD = ["powershell.exe", "-Command", ".\\standalone.bat restart"]
+    _MILVUS_START_CWD = "../../utils/milvus_standalone_docker"
+    _MILVUS_START_CMD = ["powershell.exe", "-Command", "./standalone.bat restart"]
 
     def __init__(self, config = Dict[str,Any],codebase_path=None):
         """
@@ -24,9 +26,9 @@ class MilvusAdapter(BaseVectorDBAdapter):
         """
 
         super().__init__(config,codebase_path)
+        self.text_processor = TextProcessor()
         self._init_components()
         self._load_knowledge_base()
-        self.text_processor = TextProcessor()
     
     def get_search_params(self, search_type: str) -> dict:
         """暴露适配器专属参数"""
@@ -43,7 +45,12 @@ class MilvusAdapter(BaseVectorDBAdapter):
             self._start_docker()
         
         try:
-            subprocess.run(self._MILVUS_START_CMD, check=True)
+            script_dir = Path(__file__).resolve().parent
+            cwd_path = (
+                    script_dir/ self._MILVUS_START_CWD  # 调整路径层级
+            ).resolve()
+            print(f"[Milvus] standlong服务执行目录: {cwd_path}")  # 调试输出
+            subprocess.run(self._MILVUS_START_CMD,cwd=cwd_path, check=True,encoding="utf-8" )
             connections.connect("default", host=self.config["host"], port=self.config["port"])
             print("[Milvus] 服务已启动")
         except subprocess.CalledProcessError as e:
