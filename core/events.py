@@ -26,15 +26,14 @@ class EventType(str, Enum):
     COMMAND_SUCCESS = "command_success"
     COMMAND_ERROR = "command_error"
 
-    # 输出事件
-    OUTPUT_UPDATE = "output_update"       # 数据格式: str
     ERROR = "error"                       # 数据格式: {"stage": str, "error": str}
 
     # 历史管理事件
     HISTORY_CLEARED = "history_cleared"   # 数据格式: None
 
-    RESPONSE_CHUNK = "response_chunk"       # 流式响应片段
+    # 输出事件
     STREAM_START = "stream_start"           # 流式开始
+    RESPONSE_CHUNK = "response_chunk"       # 流式响应片段
     STREAM_END = "stream_end"               # 流式结束
 
     CANCEL_OPERATION = "cancel_operation"

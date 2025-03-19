@@ -10,9 +10,10 @@ class ConfigLoader:
         """
         加载YAML配置文件并解析环境变量占位符
         示例配置："""
-        base_dir = Path(__file__).parent.parent  # 项目根目录
+        base_dir = Path(__file__).parent.parent / 'configs'  # 项目根目录
         full_path = base_dir / config_path
         
+
         with open(full_path, 'r', encoding='utf-8') as f:
             config_str = f.read()
             # 替换环境变量（支持默认值）
@@ -58,8 +59,8 @@ class BaseConfig(ABC):
             return default
 class ModelConfig(BaseConfig):
     @classmethod
-    def config_path(self) -> str:
-        return "configs/model_config.yaml"
+    def config_path(cls) -> str:
+        return "model_config.yaml"
     
     @classmethod
     def model_providers(cls) -> Dict[str, Any]:
@@ -74,8 +75,8 @@ class ModelConfig(BaseConfig):
 class DBConfig(BaseConfig):
 
     @classmethod
-    def config_path(self) -> str:
-        return "configs/db_config.yaml"
+    def config_path(cls) -> str:
+        return "db_config.yaml"
 
     @classmethod
     def milvus(cls) -> Dict[str, Any]:
@@ -84,8 +85,9 @@ class DBConfig(BaseConfig):
 
 class ProcessConfig(BaseConfig):
 
-    def config_path(self) -> str:
-        return "configs/process_config.yaml"
+    @classmethod
+    def config_path(cls) -> str:
+        return "process_config.yaml"
 
     @classmethod
     def task_control(cls) -> Dict[str, Any]:

@@ -3,8 +3,7 @@ from typing import Callable, Dict
 
 class RankerFactory:
     @staticmethod
-    def create_ranker(ranker_config: Dict) -> Callable:
-        ranker_type = ranker_config.get('type')
+    def create_ranker(ranker_type: str) -> Callable:
         
         if ranker_type == 'RRFRanker':
             from pymilvus import RRFRanker

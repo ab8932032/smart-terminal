@@ -1,3 +1,12 @@
-task_control: 
-  max_parallel_pipelines: 5
-  default_command_timeout: 30
+task_control:
+  max_concurrent_tasks: 5
+  command_timeout: 30
+source_weights:
+  official_document: 1.2   # 官方文档权重最高（如API文档、官方指南）
+  community_post: 1.0      # 社区论坛帖子（如StackOverflow、GitHub Issues）
+  internal_wiki: 0.9       # 团队内部知识库
+  social_media: 0.7        # 社交媒体内容（如微博、Reddit普通用户帖子）
+  user_feedback: 0.6       # 用户反馈和评论
+  local_database: 1       # 本地知识库数据
+  untrusted_forum: 0.0    # 完全忽略不可信来源
+max_history_messages: 10

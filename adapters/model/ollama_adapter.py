@@ -8,8 +8,8 @@ import aiohttp
 logger = get_logger(__name__)
 
 class OllamaAdapter(BaseModelAdapter):
-    def __init__(self, config: dict,event_bus):
-        super().__init__(config,event_bus)
+    def __init__(self, config: dict, event_bus):
+        super().__init__(config, event_bus)
         """
         Ollama API适配器
         :param config: 配置加载器实例

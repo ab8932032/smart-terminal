@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
 
@@ -13,13 +15,17 @@ class TemplateManager:
     @classmethod
     def render(cls, template_name: str, context: dict) -> str:
         if not cls.env:
-            cls.env = Environment(loader=FileSystemLoader("templates"))
+            cls.env = Environment(loader=FileSystemLoader(Path(__file__).resolve().parent / "templates"))
         return cls.env.get_template(template_name).render(context)
 
-    def template_exists(self, template_name: str) -> bool:
+    @classmethod
+    def template_exists(cls, template_name: str) -> bool:
         """检查模板是否存在"""
         try:
-            self.env.get_template(template_name)
+            if not cls.env:
+                print(f"Templates路径: {Path(__file__).resolve().parent.parent}")
+                cls.env = Environment(loader=FileSystemLoader(Path(__file__).resolve().parent.parent / "templates"))
+            cls.env.get_template(template_name)
             return True
         except TemplateNotFound:
             return False

@@ -1,6 +1,7 @@
 fusion:
-  limit: 60  # 融合阶段保留的最大候选结果数
-  ranker: "RRFRanker"  # 结果融合排序器类型（示例值）
+  limit: 60  # 融合阶段的结果限制数量
+  reranker: "RRFRanker"  # 结果融合排序器类型（示例值）
   weights:
     dense: 0.6  # 稠密检索结果权重
     sparse: 0.4  # 稀疏检索结果权重
+    percent: 60  # 混合检索检索结果占比

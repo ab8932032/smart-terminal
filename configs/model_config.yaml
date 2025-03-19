@@ -2,13 +2,12 @@ model_providers:
   ollama:
     adapter: adapters.model.ollama_adapter.OllamaAdapter
     endpoint: "http://localhost:11434"
-    generation_params: # 新增生成参数
-      max_concurrent_tasks: 3
-      timeout: 30
     model_name: "deepseek-r1:7b"
-    temperature: 0.8
-    top_p: 0.95
-    max_tokens: 4096
+    generation:
+      temperature: 0.8
+      top_p: 0.95
+      max_tokens: 4096
+      repetition_penalty: 1.1
     enabled: false
     
   huggingface:
@@ -22,10 +21,8 @@ model_providers:
     generation:
       max_new_tokens: 8192
       temperature: 0.7
-      search_top_k: 5
-    generation_params: # 新增生成参数
-      max_concurrent_tasks: 3
-      timeout: 30
+      top_p: 0.95
+      repetition_penalty: 1.1
     enabled: true
       
 logging:

@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any
 from core.event_bus import EventBus
+from core.events import EventType
 from services.session_manager import SessionManager
 from utils.config_loader import ModelConfig
 
@@ -21,6 +22,7 @@ class BaseFrontend(ABC):
         self.session_manager = session_manager
         self.config = config
         self._bootstrap_ui()
+        self.in_think = False  # 新增：用于标记是否在 <think> 标签内
 
     def _bootstrap_ui(self):
         """引导式UI初始化（模板方法模式）"""
@@ -46,12 +48,15 @@ class BaseFrontend(ABC):
 
     def _subscribe_core_events(self):
         """订阅核心事件总线消息（可被子类扩展）"""
-        self.event_bus.subscribe("USER_INPUT", self._handle_user_input)
-        self.event_bus.subscribe("CLEAR_HISTORY", self.clear_display)
-        self.event_bus.subscribe("OUTPUT_UPDATE", self.handle_output_update)
-        self.event_bus.subscribe("STATUS_UPDATE", self.handle_status_update)
-        self.event_bus.subscribe("SECURITY_ALERT", self.handle_security_alert)
-        self.event_bus.subscribe("ERROR", self.handle_error)
+        self.event_bus.subscribe(EventType.USER_INPUT, self._handle_user_input)
+        self.event_bus.subscribe(EventType.CLEAR_HISTORY, self.clear_display)
+
+        self.event_bus.subscribe(EventType.STREAM_START, self.handle_stream_start)
+        self.event_bus.subscribe(EventType.RESPONSE_CHUNK, self.handle_response_chunk)
+        self.event_bus.subscribe(EventType.STREAM_END, self.handle_stream_end)
+        self.event_bus.subscribe(EventType.STATUS_UPDATE, self.handle_status_update)
+        self.event_bus.subscribe(EventType.SECURITY_ALERT, self.handle_security_alert)
+        self.event_bus.subscribe(EventType.ERROR, self.handle_error)
 
     @abstractmethod
     def start(self):
@@ -59,10 +64,15 @@ class BaseFrontend(ABC):
         pass
 
     # ---------- 事件处理接口 ----------
-    @abstractmethod
-    def handle_output_update(self, data: dict[str, Any]):
+    
+    def handle_stream_start(self, data: dict[str, Any]):
         """处理输出内容更新事件"""
-        pass
+        content_type = data.get("type", "text")
+        self.update_display("AI: \n\n", content_type='assistant')
+    
+    def handle_stream_end(self, data: dict[str, Any]):
+        """处理输出内容更新事件"""
+        self.update_display("\n", content_type='assistant')
 
     @abstractmethod
     def handle_status_update(self, data: dict[str, Any]):
@@ -78,6 +88,34 @@ class BaseFrontend(ABC):
     def handle_security_alert(self, data: dict[str, Any]):
         """处理安全警报事件（权限校验/敏感操作拦截）"""
         pass
+
+    def handle_response_chunk(self, event_data: dict[str, Any]):
+        """处理流式响应分块（支持 <think> 和 </think> 标签包裹的思考内容）"""
+        chunk = event_data["chunk"]
+        content = chunk["content"]
+
+        # 处理内容中的 <think> 和 </think> 标签
+        if "<think>" in content:
+            before_think, rest = content.split("<think>", 1)
+            if before_think:
+                self.update_display(before_think, content_type='response')
+            self.update_display("思考中...\n", content_type='think')  # 替换 <think> 标签
+            content = rest
+            self.in_think = True
+
+        if "</think>" in content and self.in_think:
+            think_content, after_think = content.split("</think>", 1)
+            self.update_display(think_content, content_type='think')
+            self.update_display("思考完成.\n", content_type='think')  # 替换 </think> 标签
+            content = after_think
+            self.in_think = False
+
+        # 如果在 <think> 标签内，继续使用 think 标记
+        if self.in_think:
+            self.update_display(content, content_type='think')
+        else:
+            if content:
+                self.update_display(content, content_type='response')
 
     # ---------- 用户交互接口 ----------
     @abstractmethod
@@ -96,9 +134,10 @@ class BaseFrontend(ABC):
         pass
 
     @abstractmethod
-    def clear_display(self,data: dict[str, Any]):
+    def clear_display(self, data: dict[str, Any]):
         """清空内容显示区域"""
         pass
+
     @abstractmethod
     def _handle_user_input(self, data: dict[str, Any]):
         """处理原始用户输入事件（预处理后转给具体处理器）"""

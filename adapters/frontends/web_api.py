@@ -1,14 +1,17 @@
 from typing import Dict, Any
-from fastapi import FastAPI, WebSocket, HTTPException
+from fastapi import FastAPI, WebSocket, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 from core.event_bus import EventBus
+from core.events import EventType
 from services.session_manager import SessionManager
-from utils.config_loader import ModelConfig
 from adapters.frontends.base_frontend import BaseFrontend
 import json
 import asyncio
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 class WebAPI(BaseFrontend):
     def __init__(self,
@@ -18,6 +21,9 @@ class WebAPI(BaseFrontend):
         self.app = FastAPI()
         self.active_connections = set()
         super().__init__(event_bus, session_manager, config)
+        self.templates = Jinja2Templates(directory=config.get("template_dir", "templates"))
+        # 新增静态文件路由
+        self.app.mount("/static", StaticFiles(directory="static"), name="static")
 
     def _configure_base_styles(self):
         """Web API无需样式配置"""
@@ -27,8 +33,8 @@ class WebAPI(BaseFrontend):
         """构建API路由和WebSocket"""
         # 配置中间件
         self.app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],
+            CORSMiddleware,  # type: ignore
+            allow_origins=self.config["cors_allowed_origins"],
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
@@ -39,11 +45,16 @@ class WebAPI(BaseFrontend):
             text: str
             session_id: str = "default"
 
+        # 注册根路径返回HTML页面
+        @self.app.get("/", response_class=HTMLResponse)
+        async def read_root(request: Request):
+            return self.templates.TemplateResponse("index.html", {"request": request})
+
         # 注册路由
         @self.app.post("/api/command")
         async def handle_command(input: UserInput):
             """处理用户命令输入"""
-            self.event_bus.publish("USER_INPUT", {
+            self.event_bus.publish(EventType.USER_INPUT, {
                 "text": input.text,
                 "session_id": input.session_id
             })
@@ -63,11 +74,11 @@ class WebAPI(BaseFrontend):
 
     def _setup_event_bindings(self):
         """绑定核心事件到WebSocket广播"""
-        self.event_bus.subscribe("OUTPUT_UPDATE", self._broadcast_output)
-        self.event_bus.subscribe("STATUS_UPDATE", self._broadcast_status)
-        self.event_bus.subscribe("ERROR", self._broadcast_error)
+        self.event_bus.subscribe(EventType.RESPONSE_FINAL, self._broadcast_output)
+        self.event_bus.subscribe(EventType.STATUS_UPDATE, self._broadcast_status)
+        self.event_bus.subscribe(EventType.ERROR, self._broadcast_error)
 
-    async def _broadcast(self, event_type: str, payload: dict):
+    async def _broadcast(self, event_type: EventType, payload: dict):
         """通用WebSocket广播方法"""
         message = json.dumps({"type": event_type, "data": payload})
         for connection in self.active_connections:
@@ -119,3 +130,10 @@ class WebAPI(BaseFrontend):
     def clear_display(self):
         """清空显示区域"""
         self._broadcast_output({"action": "clear"})
+
+    def _on_clear_button_click(self):
+        """处理清空按钮点击事件"""
+        session_id = self.session_manager.get_current_session()
+        self.event_bus.publish(EventType.CLEAR_HISTORY, {
+            "session_id": session_id
+        })

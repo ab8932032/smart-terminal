@@ -9,7 +9,7 @@ logger = get_logger(__name__)
 
 
 class RetrievalService:
-    def __init__(self, vectordb_adapter: BaseVectorDBAdapter,db_config: Dict):
+    def __init__(self, vectordb_adapter: BaseVectorDBAdapter):
         """
         增强版检索服务，封装混合检索策略
         
@@ -18,18 +18,15 @@ class RetrievalService:
         self.vectordb = vectordb_adapter
         self.strategy = ConfigLoader.load_yaml("retrieval_strategy.yaml")
 
-        self.top_k = db_config['max_knowledge_results']
-        self.score_threshold = db_config['retrieval_params']['score_threshold']
-
     async def hybrid_search(self, query: str, top_k: int = 5) -> List[Dict]:
         
         # 构建检索请求
         requests = self._build_search_requests(query, top_k)
         # 根据fusion定义的信息动态选择排序器
         fusion = self.strategy.get('fusion', {})
-        ranker = RankerFactory.create_ranker(fusion.get('ranker', {}))
+        reranker = RankerFactory.create_ranker(fusion.get('reranker', ""))
         # 执行检索
-        raw_results = await self.vectordb.async_search(requests,top_k,ranker(fusion.get('limit', {})))
+        raw_results = await self.vectordb.async_search(requests,top_k,reranker(fusion.get('weights', {}).get("percent",60)))
         return self._process_results(raw_results)
     
     def _process_results(self, raw_results: list) -> List[Dict]:
@@ -42,10 +39,9 @@ class RetrievalService:
                 key = f"{hit.entity.filename}:{hash(hit.entity.text)}"
                 if key not in seen:
                     processed.append({
-                        "filename": hit.entity.filename,
+                        "filename": hit.filename,
                         "text": hit.entity.text,
-                        "score": hit.score,
-                        "type": "dense" if hit.anns_field == "embedding" else "sparse"
+                        "score": hit.score
                     })
                     seen.add(key)
         

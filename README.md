@@ -3,9 +3,17 @@ Try to access the local knowledge base through python code while calling the pla
 
 以下是适合放入README.md的文件结构注释说明：
 
-```markdown
+```
+
+
 ## 项目文件结构说明
 smart-terminal/
+├── static/                   # 新增静态资源目录
+│   ├── css/                  # 样式文件
+│   ├── js/                   # JavaScript文件
+│   └── images/               # 图片资源
+├── templates/                # HTML模板文件
+│   └── index.html            # 前端主页面
 ├── configs/                   # 配置文件目录
 │   ├── model_config.yaml      # 模型接入配置（前端、大模型的适配器路径、端点地址等）
 │   ├── db_config.yaml         # 数据库连接配置
@@ -96,6 +104,9 @@ smart-terminal/
            self._build_display_area() # 展示区域
            self._bind_events()        # 事件绑定
    ```
+   
+# 核心模块交互流程
+  用户输入 → 前端适配器 → 事件总线 → 流程控制器 → 检索服务 → 问答引擎 → 模型适配器 → 生成响应
 
 # 启动GUI应用
 ```bash
@@ -107,4 +118,3 @@ python -m entrypoints.gui_app
 1. **新增模型适配器**：在`adapters/model/`添加实现类，并更新配置文件
 2. **更换前端界面**：实现新的Frontend子类并修改入口配置
 3. **自定义流程**：继承`ProcessController`并重写执行逻辑
-```

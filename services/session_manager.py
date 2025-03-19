@@ -1,9 +1,9 @@
 import json
-import os
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict
+
 from utils.logger import get_logger
 from utils.config_loader import ModelConfig
 
@@ -15,7 +15,7 @@ class SessionManager:
         """
         self.logger = get_logger(__name__)
         self.config = config or ModelConfig.load()
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
         # 初始化存储路径
         self.storage_path = Path(self.config.get('session.storage_path', './sessions'))
@@ -52,7 +52,7 @@ class SessionManager:
             }
         return session_id
 
-    def add_message(self, session_id: str, role: str, content: str, metadata: dict = None):
+    def add_message(self, session_id: str, role: str, content: str,thought: str = None, metadata: dict = None):
         """
         添加消息到指定会话
         :param session_id: 会话ID
@@ -68,6 +68,7 @@ class SessionManager:
             self.active_sessions[session_id]["history"].append({
                 "role": role,
                 "content": content,
+                "thought": thought or "",
                 "metadata": metadata or {},
                 "timestamp": datetime.now().isoformat()
             })
@@ -80,11 +81,14 @@ class SessionManager:
         :param max_length: 最大返回条数
         :return: 历史消息列表
         """
+        self.logger.info(f"Getting history for session {session_id}")
         with self._lock:
             if session_id not in self.active_sessions:
                 return []
 
             history = self.active_sessions[session_id]["history"]
+
+            self.logger.info(f"Getting history finish for session {session_id}: {history}")
             return history[-max_length:]
 
     def clear_history(self, session_id: str):
@@ -103,9 +107,18 @@ class SessionManager:
             self.save_session(session_id)
 
     def save_session(self, session_id: str):
+        # 将文件写入移到后台线程
+        threading.Thread(
+            target=self._save_session_to_disk,
+            args=(session_id,),
+            daemon=True
+        ).start()
+        
+    def _save_session_to_disk(self, session_id: str):
         """持久化会话到文件"""
         try:
-            session_data = self.active_sessions.get(session_id)
+            with self._lock:
+                session_data = self.active_sessions.get(session_id)
             if not session_data:
                 return
 

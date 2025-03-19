@@ -6,7 +6,7 @@ from pymilvus import (
     DataType, Collection, utility, Function,
     FunctionType, AnnSearchRequest,RRFRanker
 )
-
+import time
 from adapters.vectordb.base_vector_db import BaseVectorDBAdapter
 from utils.config_loader import ConfigLoader
 from utils.text_processing import TextProcessor
@@ -16,7 +16,7 @@ class MilvusAdapter(BaseVectorDBAdapter):
     
     _DOCKER_CMD = ["docker", "info"]
     _MILVUS_START_CWD = "../../utils/milvus_standalone_docker"
-    _MILVUS_START_CMD = ["powershell.exe", "-Command", "./standalone.bat restart"]
+    _MILVUS_START_CMD = ["powershell.exe", "-Command", "./standalone.bat start"]
 
     def __init__(self, config = Dict[str,Any],codebase_path=None):
         """
@@ -28,7 +28,6 @@ class MilvusAdapter(BaseVectorDBAdapter):
         super().__init__(config,codebase_path)
         self.text_processor = TextProcessor()
         self._init_components()
-        self._load_knowledge_base()
     
     def get_search_params(self, search_type: str) -> dict:
         """暴露适配器专属参数"""
@@ -37,8 +36,27 @@ class MilvusAdapter(BaseVectorDBAdapter):
     def _init_components(self):
         """初始化核心组件"""
         self._start_services()
-        self.collection = self._setup_collection()
-
+        if utility.has_collection(self.config['collection_name']):
+            self.collection = Collection(self.config['collection_name'])
+        else:
+            self.collection = self._setup_collection()
+            self._load_knowledge_base()
+        
+    def _wait_for_milvus_ready(self, timeout=30):
+        """等待Milvus服务完全启动"""
+        start_time = time.time()
+        while True:
+            try:
+                # 尝试执行简单操作（如获取集合列表）
+                print("Milvus版本:", utility.get_server_version())
+                print("✅ Milvus服务已就绪！")
+                return
+            except Exception as e:
+                elapsed = time.time() - start_time
+                if elapsed >= timeout:
+                    raise TimeoutError(f"Milvus服务启动超时（{timeout}s）") from e
+                print(f"⏳ 等待Milvus启动中... 错误: {str(e)}，剩余时间: {timeout - elapsed:.1f}s")
+                time.sleep(2)
     def _start_services(self):
         """启动依赖服务"""
         if not self._is_docker_running():
@@ -52,6 +70,9 @@ class MilvusAdapter(BaseVectorDBAdapter):
             print(f"[Milvus] standlong服务执行目录: {cwd_path}")  # 调试输出
             subprocess.run(self._MILVUS_START_CMD,cwd=cwd_path, check=True,encoding="utf-8" )
             connections.connect("default", host=self.config["host"], port=self.config["port"])
+
+            print("当前集合列表:", utility.list_collections())
+            self._wait_for_milvus_ready()
             print("[Milvus] 服务已启动")
         except subprocess.CalledProcessError as e:
             print(f"[Error] 服务启动失败: {str(e)}")
@@ -59,9 +80,9 @@ class MilvusAdapter(BaseVectorDBAdapter):
 
     def _setup_collection(self) -> Collection:
         """配置Milvus集合"""
+        """如果已经存在该集合，则直接返回"""
         if utility.has_collection(self.config['collection_name']):
             utility.drop_collection(self.config['collection_name'])
-
         # 定义数据结构
         fields = [
             FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
@@ -115,8 +136,10 @@ class MilvusAdapter(BaseVectorDBAdapter):
 
     def _load_knowledge_base(self):
         """加载知识库数据"""
+        print("[Milvus] 开始加载知识库数据...")
         filenames, texts, embeddings = self.text_processor.process_directory(self.codebase_path)
         self.insert_data(filenames, texts, embeddings)
+        print("[Milvus] 知识库数据加载完成")
 
     def insert_data(self, filenames: list, texts: list, embeddings: list):
         """插入数据到数据库"""
@@ -134,7 +157,7 @@ class MilvusAdapter(BaseVectorDBAdapter):
         return AnnSearchRequest(
             data=embeddings,
             anns_field="embedding",
-            param=self.config["dense"]["search_params"],
+            param=self.config["index_params"]["dense"]["search_params"],
             limit=top_k
         )
 
@@ -142,35 +165,39 @@ class MilvusAdapter(BaseVectorDBAdapter):
         return AnnSearchRequest(
             data=[query_text],
             anns_field="sparse",
-            param=self.config["sparse"]["search_params"],
+            param=self.config["index_params"]["sparse"]["search_params"],
             limit=top_k)
-    def search(self, requests: List[AnnSearchRequest], top_k: int,reranker= None) -> list:
+    def search(self, requests: List[AnnSearchRequest], top_k: int,reranker= None) -> List[Any]:
         """
         执行基础检索操作
         :param reranker: 
         :param requests: 检索请求列表
         :param top_k: 返回结果数量
         """
-        return self.collection.hybrid_search(
+        search_results = self.collection.hybrid_search(
             reqs=requests,
             rerank=reranker,
             limit=top_k,
             output_fields=["filename", "text"]
         )
+        return search_results
     
-    async def async_search(self, requests: List[AnnSearchRequest], top_k: int, reranker= None) -> list:
+    async def async_search(self, requests: List[AnnSearchRequest], top_k: int, reranker= None) -> List[Any]:
         """
         执行基础检索操作
         :param reranker: 
         :param requests: 检索请求列表
         :param top_k: 返回结果数量
         """
-        return self.collection.hybrid_search(
+        search_results = self.collection.hybrid_search(
             reqs=requests,
             rerank=reranker,
             limit=top_k,
             output_fields=["filename", "text"]
         )
+        
+        return search_results
+
     def _is_docker_running(self) -> bool:
         """检查Docker服务状态"""
         try:

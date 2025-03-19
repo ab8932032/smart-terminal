@@ -6,3 +6,4 @@
 *.log
 /utils/milvus_standalone_docker/volumes
 /logs
+/sessions

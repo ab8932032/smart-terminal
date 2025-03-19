@@ -28,31 +28,34 @@ class EventBus:
         self._executor = ThreadPoolExecutor(
             max_workers=min(32, (os.cpu_count() or 1) + 4)  # 动态线程数
         )
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._async_loop = asyncio.new_event_loop()  # 独立事件循环
 
-    def subscribe(self, event_type: str, handler: Callable[[Any], None]):
+    def subscribe(self, event_type: EventType, handler: Callable[[Any], None]):
         """订阅事件类型"""
         with self._lock:
             self._subscriptions[event_type].append(handler)
             logger.debug(f"Subscribed to {event_type} with {handler.__name__}")
 
-    def unsubscribe(self, event_type: str, handler: Callable[[Any], None]):
+    def unsubscribe(self, event_type: EventType, handler: Callable[[Any], None]):
         """取消订阅"""
         with self._lock:
             if handler in self._subscriptions[event_type]:
                 self._subscriptions[event_type].remove(handler)
                 logger.debug(f"Unsubscribed {handler.__name__} from {event_type}")
                 
-    async def publish_async(self, event_type: str, data: Any):
+    async def publish_async(self, event_type: EventType, data: Any):
         """原生异步发布方法"""
         handlers = self._subscriptions.get(event_type, [])
-        await asyncio.gather(*[
-            handler(data)
-            for handler in handlers
-            if inspect.iscoroutinefunction(handler)
-        ])
-    def publish(self, event_type: str, data: Any = None, async_exec: bool = True):
+        try:
+            await asyncio.gather(*[
+                handler(data)
+                for handler in handlers
+                if inspect.iscoroutinefunction(handler)
+            ])
+        except Exception as e:
+            self.publish(EventType.ERROR, {"error": str(e)})
+    def publish(self, event_type: EventType, data: Any = None, async_exec: bool = True):
         """发布事件"""
         handlers = self._subscriptions.get(event_type, [])
         logger.debug(f"Dispatching {event_type} to {len(handlers)} handlers")
@@ -60,7 +63,7 @@ class EventBus:
         def _execute_handler(handler):
             try:
                 if inspect.iscoroutinefunction(handler):
-                    asyncio.run(handler(data))
+                    asyncio.run_coroutine_threadsafe(handler(data), self._async_loop)
                 else:
                     handler(data)
             except Exception as e:

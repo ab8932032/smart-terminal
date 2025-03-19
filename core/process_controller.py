@@ -3,16 +3,17 @@ import asyncio
 import uuid
 from datetime import datetime
 from time import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 
+from core.event_bus import EventBus
 from core.retrieval_service import RetrievalService
 from utils.logger import get_logger
 from core.events import EventType
 from services.command_processor import CommandProcessor
 from services.session_manager import SessionManager
 from core.qa_engine import QAEngine
-from utils.config_loader import ConfigLoader
+from utils.config_loader import ConfigLoader, ProcessConfig
 
 logger = get_logger(__name__)
 
@@ -27,11 +28,12 @@ class PipelineContext:
 class ProcessController:
     def __init__(
             self,
-            event_bus,
+            event_bus: EventBus,
             qa_engine: QAEngine,
             command_processor: CommandProcessor,
             session_manager: SessionManager,
-            retrieval_service: Optional[RetrievalService] = None
+            retrieval_service: Optional[RetrievalService] = None,
+            process_config: ProcessConfig = None  # 新增: 通过参数传递 process_config
     ):
         self.retrieval_service = retrieval_service
         self.event_bus = event_bus
@@ -40,10 +42,9 @@ class ProcessController:
         self.session_manager = session_manager
         self._active_tasks = set()
         
-        self.db_config = ConfigLoader.load_yaml("db_config.yaml")['milvus']
-        self.process_config = ConfigLoader.load_yaml("process_config.yaml")['task_control']
-    
-        self._task_semaphore = asyncio.Semaphore(self.process_config.get("max_concurrent_tasks", 5))
+        self.process_config = process_config  # 修改: 使用传入的 process_config
+
+        self._task_semaphore = asyncio.Semaphore(self.process_config.task_control().get("max_concurrent_tasks", 5))
     
         self._register_event_handlers()
 
@@ -53,6 +54,7 @@ class ProcessController:
             EventType.USER_INPUT: self.handle_user_input,
             EventType.CLEAR_HISTORY: self.handle_clear_history,
             EventType.CANCEL_OPERATION: self.handle_cancel_operation,
+            EventType.GENERATION_START: self.handle_generation_start,
             EventType.GENERATION_COMPLETE: self.handle_generation_complete,
             EventType.RETRIEVE_KNOWLEDGE: self.handle_retrieve_knowledge
         }
@@ -66,10 +68,10 @@ class ProcessController:
             question=data["question"]
         ))
 
-    def handle_clear_history(self, _=None):
+    def handle_clear_history(self, data=None):
     
         # 需要同步清理会话
-        self.session_manager.clear_history(self.session_manager.get_current_session())
+        self.session_manager.clear_history(data.get("session_id") if data else self.session_manager.get_current_session())
     async def handle_user_input(self, data: Dict[str, Any]):
         """处理用户输入主流程"""
         ctx = PipelineContext(
@@ -120,7 +122,7 @@ class ProcessController:
         try:
             result = await asyncio.wait_for(
                 self.command_processor.execute_async(command),
-                timeout=self.process_config.get("command_timeout", 30)
+                timeout=self.process_config.task_control().get("command_timeout", 30)
             )
 
             event_type = EventType.COMMAND_SUCCESS if result["status"] == "success" else EventType.COMMAND_ERROR
@@ -135,7 +137,6 @@ class ProcessController:
     async def _handle_qa_flow(self, ctx: PipelineContext):
         """问答流程处理"""
         ctx.correlation_id = str(uuid.uuid4())
-    
         try:
             async with asyncio.TaskGroup() as tg:
                 # 创建并自动管理任务
@@ -162,6 +163,7 @@ class ProcessController:
             ctx.session_id,
             "user",
             ctx.question,
+            thought="",
             metadata={"correlation_id": ctx.correlation_id}
         )
     
@@ -170,6 +172,7 @@ class ProcessController:
         ctx.knowledge = self._enrich_knowledge(knowledge)  # 新增知识增强处理
 
     # 生成响应
+       
         await self._generate_response(ctx)
 
     def _enrich_knowledge(self, raw_knowledge: list) -> list:
@@ -179,9 +182,10 @@ class ProcessController:
                     if k.get('timestamp', current_year) >= current_year - 2]
     
         # 2. 添加来源可信度加权
-        source_weights = self.db_config.get("source_weights", {})
+        source_weights = self.process_config.get("source_weights", {}) 
         for item in filtered:
             item['weight'] = source_weights.get(item['source'], 1.0)
+            item['content'] = ''.join(f"文件名:” {item['filename']}“ , 文件内容: ”{item['text']}“")
     
         # 3. 按相关性+时效性综合排序
         return sorted(filtered,
@@ -189,15 +193,9 @@ class ProcessController:
                       reverse=True)
     def _filter_knowledge(self, results: list) -> list:
         """修复后的知识过滤"""
-        db_params = self.db_config.get("retrieval_params", {})
-        threshold = db_params.get("score_threshold", 0.7)
-        max_results = db_params.get("max_knowledge_results", 5)
-    
-        return sorted(
-            [r for r in results if r["score"] > threshold],
-            key=lambda x: x["score"],
-            reverse=True
-        )[:max_results]
+        for item in results:
+            item['source'] ="local_database"
+        return results
     
     async def _retrieve_knowledge(self, ctx: PipelineContext) -> list:
         if not self.retrieval_service: 
@@ -209,7 +207,7 @@ class ProcessController:
             # 通过服务层进行检索
             raw_results = await self.retrieval_service.hybrid_search(
                 query=ctx.question,
-                top_k=self.db_config.get("max_knowledge_results", 5)
+                top_k=self.process_config.get("max_knowledge_results", 5)  # 修改: 使用 process_config 替代 db_config
             )
 
             return self._filter_knowledge(raw_results)
@@ -222,10 +220,15 @@ class ProcessController:
     async def _generate_response(self, ctx: PipelineContext):
         """生成响应流"""
         try:
+            messages = self.session_manager.get_history(
+                ctx.session_id,
+                self.process_config.get("max_history_messages", 5))
             response_stream = self.qa_engine.generate_response(
                 question=ctx.question,
                 session_id=ctx.session_id,
                 knowledge=ctx.knowledge,
+                correlation_id=ctx.correlation_id,
+                dialog_history=messages,
                 stream=True  # 添加流式开关
             )
 
@@ -256,20 +259,44 @@ class ProcessController:
 
     def _validate_chunk(self, chunk: Dict) -> Dict:
         """验证响应块有效性"""
-        required_keys = ["content", "is_final"]
+        required_keys = ["content"]
         if not all(k in chunk for k in required_keys):
             raise ValueError("Invalid response chunk format")
         return chunk
+    
+    def _split_response(self, response: str) -> Tuple[str, str]:
+        """分离思考过程和最终回答"""
+        thought = ""
+        final_answer = response
+    
+        # 查找<Think>标签内容
+        think_start = response.find("<think>")
+        think_end = response.find("</think>")
+        if think_start != -1 and think_end != -1:
+            thought = response[think_start+7:think_end].strip()
+            final_answer = response[think_end+8:].strip()
+        return thought, final_answer
+    
+    def handle_generation_start(self, data: Dict):
+        """处理生成开始事件"""
 
+        metadata = self._build_metadata(data)
+        self.event_bus.publish(EventType.STREAM_START, {
+            "type": "ai_response",
+            "correlation_id": data.get("correlation_id", ""),
+            "metadata" : metadata
+        })
     def handle_generation_complete(self, data: Dict):
         """处理生成完成事件"""
         try:
             metadata = self._build_metadata(data)
             full_response = self._finalize_response(data["session_id"])
+            thought, final_answer = self._split_response(full_response)
 
             self._save_response_to_session(
                 session_id=data["session_id"],
-                response=full_response,
+                response=final_answer,
+                thought=thought,
                 metadata=metadata
             )
 
@@ -281,11 +308,13 @@ class ProcessController:
     def _build_metadata(self, data: Dict) -> Dict:
         """构建响应元数据"""
         return { 
-            "model": self.qa_engine.model_adapter.config.get("model_name", "default_model"),
+            "model": data.get("model_name", "default_model"), 
             "generated_at": datetime.now().isoformat(),
-            "response_time": time() - data["start_time"],
-            "sources": data.get("sources", []),
-            "correlation_id": data.get("correlation_id")
+            "start_time": data.get("start_time", 0),
+            "response_time": data.get("response_time", 0), 
+            "sources": data.get("sources", []),  
+            "correlation_id": data.get("correlation_id", ""),
+            "session_id": data.get("session_id", "unknown")
         }
 
     def _finalize_response(self, session_id: str) -> str:
@@ -293,19 +322,20 @@ class ProcessController:
         buffer = self.session_manager.get_response_buffer(session_id)
         return "".join(chunk.get("content", "") for chunk in buffer)
 
-    def _save_response_to_session(self, session_id: str, response: str, metadata: Dict):
+    def _save_response_to_session(self, session_id: str, response: str, thought: str, metadata: Dict):
         """保存响应到会话"""
         self.session_manager.add_message(
             session_id,
             "assistant",
             response,
+            thought,
             metadata=metadata
         )
         self.session_manager.clear_response_buffer(session_id)
 
     def _publish_final_response(self, response: str, metadata: Dict):
         """发布最终响应事件"""
-        self.event_bus.publish(EventType.OUTPUT_UPDATE, {
+        self.event_bus.publish(EventType.STREAM_END, {
             "type": "ai_response",
             "content": response,
             "metadata": metadata
@@ -333,7 +363,7 @@ class ProcessController:
         error_data = {
             "stage": stage,
             "message": message,
-            "context": context
+            "context": context if isinstance(context, (str, dict)) else str(context)  # 修改：增加对 context 类型的检查
         }
         logger.error(f"{stage} error: {message}")
         self.event_bus.publish(EventType.ERROR, error_data)
