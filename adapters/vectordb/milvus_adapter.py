@@ -8,7 +8,6 @@ from pymilvus import (
 )
 import time
 from adapters.vectordb.base_vector_db import BaseVectorDBAdapter
-from utils.config_loader import ConfigLoader
 from utils.text_processing import TextProcessor
 
 class MilvusAdapter(BaseVectorDBAdapter):
