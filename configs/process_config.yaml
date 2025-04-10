@@ -9,4 +9,4 @@ source_weights:
   user_feedback: 0.6       # 用户反馈和评论
   local_database: 1       # 本地知识库数据
   untrusted_forum: 0.0    # 完全忽略不可信来源
-max_history_messages: 10
+max_history_messages: 10  # 单次对话保留的最大轮数

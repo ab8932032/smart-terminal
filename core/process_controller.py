@@ -43,7 +43,6 @@ class ProcessController:
         self._active_tasks = set()
         
         self.process_config = process_config  # 修改: 使用传入的 process_config
-
         self._task_semaphore = asyncio.Semaphore(self.process_config.task_control().get("max_concurrent_tasks", 5))
     
         self._register_event_handlers()
@@ -159,11 +158,14 @@ class ProcessController:
     async def _execute_qa_pipeline(self, ctx: PipelineContext):
         """封装完整的QA处理流水线"""
         # 保存用户提问
+
+        summary = self.retrieval_service.vectordb.text_processor.summarize_text(ctx.question)
         self.session_manager.add_message(
             ctx.session_id,
             "user",
             ctx.question,
             thought="",
+            summary=summary,
             metadata={"correlation_id": ctx.correlation_id}
         )
     
@@ -223,6 +225,8 @@ class ProcessController:
             messages = self.session_manager.get_history(
                 ctx.session_id,
                 self.process_config.get("max_history_messages", 5))
+            
+                
             response_stream = self.qa_engine.generate_response(
                 question=ctx.question,
                 session_id=ctx.session_id,
@@ -248,7 +252,7 @@ class ProcessController:
 
         """处理响应分片"""
         valid_chunk = self._validate_chunk(chunk)
-        
+                            
         self.session_manager.append_chunk(ctx.session_id, valid_chunk)
 
         self.event_bus.publish(EventType.RESPONSE_CHUNK, {
@@ -324,11 +328,15 @@ class ProcessController:
 
     def _save_response_to_session(self, session_id: str, response: str, thought: str, metadata: Dict):
         """保存响应到会话"""
+
+
+        summary = self.retrieval_service.vectordb.text_processor.summarize_text(response)
         self.session_manager.add_message(
             session_id,
             "assistant",
-            response,
-            thought,
+            content= response,
+            thought = thought,
+            summary = summary,
             metadata=metadata
         )
         self.session_manager.clear_response_buffer(session_id)
@@ -367,3 +375,5 @@ class ProcessController:
         }
         logger.error(f"{stage} error: {message}")
         self.event_bus.publish(EventType.ERROR, error_data)
+        
+        

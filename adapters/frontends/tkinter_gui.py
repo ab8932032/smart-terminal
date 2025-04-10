@@ -127,7 +127,9 @@ class TkinterFrontend(BaseFrontend):
         self.chat_history.grid(row=0, column=0, sticky="nsew")
     
         # 新增样式配置移到此处（确保组件已创建）
-        self.chat_history.tag_configure('user_input', foreground='#007BFF')
+        self.chat_history.tag_configure('user_input',
+                                        foreground='#007BFF',
+                                        font=('微软雅黑', 12, 'bold'))  # 加粗显示
         self.chat_history.tag_configure('response', foreground='#28A745')
         self.chat_history.tag_configure('think',
                                         foreground='#666666',
@@ -215,11 +217,26 @@ class TkinterFrontend(BaseFrontend):
         self.chat_history.delete(1.0, tk.END)
         self.chat_history.configure(state='disabled')
 
-    def _handle_user_input(self, data: Dict[str, Any]):
+    def handle_user_input(self,user_input:str):
         # 实现原始用户输入事件处理逻辑
-        user_input = self.get_user_input()
-        self.clear_user_input()
-        self.event_bus.publish(EventType.USER_INPUT, {"content": user_input})
+        self.update_display(f"{user_input}\n", content_type='user_input')  # 使用现有的user_input样式
+
+        # 显式验证会话ID
+        session_id = self.session_manager.get_current_session()
+        if not session_id:
+            self.handle_error({
+                "stage": "发送处理",
+                "message": "未检测到有效会话"
+            })
+            return
+
+        # 增加调试日志
+        print(f"Publishing USER_INPUT: {user_input}")
+
+        self.loop.create_task(self._async_publish_event({
+            "text": user_input,
+            "session_id": session_id
+        }))
 
     # ---------- 私有方法 ----------
     def _append_history(self, content: str, tag: str = None):
@@ -245,23 +262,7 @@ class TkinterFrontend(BaseFrontend):
         user_input = self.input_area.get("1.0", "end-1c").strip()
         if not user_input:
             return
-        
-        # 显式验证会话ID
-        session_id = self.session_manager.get_current_session()
-        if not session_id:
-            self.handle_error({
-                "stage": "发送处理",
-                "message": "未检测到有效会话"
-            })
-            return
-        
-        # 增加调试日志
-        print(f"Publishing USER_INPUT: {user_input}")
-        
-        self.loop.create_task(self._async_publish_event({
-            "text": user_input,
-            "session_id": session_id
-        }))
+        self.handle_user_input(self.get_user_input());
     async def _async_publish_event(self, data):
         await self.event_bus.publish_async(EventType.USER_INPUT, data)
         self.clear_user_input()

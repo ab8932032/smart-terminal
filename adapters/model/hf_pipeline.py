@@ -47,8 +47,9 @@ class HuggingFacePipeline(BaseModelAdapter):
         )
 
     def _load_model(self):
+        model = None
         try:
-            return AutoModelForCausalLM.from_pretrained(
+            model =  AutoModelForCausalLM.from_pretrained(
                 self.config['model_name'],  # 支持本地路径（如：/path/to/local/model）
                 device_map="auto" if self.device == "cuda" else None,
                 quantization_config=self.quant_config,
@@ -58,6 +59,10 @@ class HuggingFacePipeline(BaseModelAdapter):
         except Exception as e:
             logger.error(f"模型加载失败: {str(e)}")
             raise
+
+        print(model.config.sliding_window)         # 应为 None 或 4096 等数值
+        print(model.config._attn_implementation)   # 应为 eager/sdpa/flash_attention_2
+        return model
 
     async def chat(
             self,

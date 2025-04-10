@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any
 
+from utils.text_processing import TextProcessor
+
 
 class BaseVectorDBAdapter(ABC):
 
@@ -8,6 +10,7 @@ class BaseVectorDBAdapter(ABC):
     def __init__(self,config = Dict[str,Any], codebase_path=None):
         self.config = config
         self.codebase_path = codebase_path or self._CODEBASE_PATH
+        self.text_processor = TextProcessor()
         
     @abstractmethod
     def create_dense_search_request(self, query_text: str, top_k: int) -> Any:

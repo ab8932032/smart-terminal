@@ -133,7 +133,8 @@ class QAEngine:
             messages = [{"role": "system", "content": system_prompt}]
 
             for msg in dialog_history[:-1]:
-                messages.append({"role": msg.get("role"), "content": msg.get("content")})
+                summary = msg.get("summary",'')
+                messages.append({"role": msg.get("role"), "content": summary})
             messages.append({"role": "user", "content": user_prompt})
             
             return messages

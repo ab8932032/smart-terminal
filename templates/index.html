@@ -1,10 +1,33 @@
-<!-- 添加字体图标支持 -->
-<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能终端</title>
+    <!-- 引入样式表 -->
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <!-- 添加字体图标支持 -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <h1>智能终端</h1>
+    </header>
+    
+    <main>
+        <!-- 消息显示区域 -->
+        <div id="display-area"></div>
+    </main>
 
-<!-- 替换发送按钮为图标 -->
-<footer>
-    <input type="text" id="user-input" placeholder="请输入您的问题..." />
-    <button id="send-button">
-        <span class="material-icons">send</span> <!-- 使用图标 -->
-    </button>
-</footer>
+    <!-- 输入区域 -->
+    <footer>
+        <input type="text" id="user-input" placeholder="请输入您的问题..." />
+        <button id="send-button">
+            <span class="material-icons">send</span> <!-- 使用图标 -->
+        </button>
+    </footer>
+
+    <!-- 引入JavaScript -->
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

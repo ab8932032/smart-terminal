@@ -48,7 +48,6 @@ class BaseFrontend(ABC):
 
     def _subscribe_core_events(self):
         """订阅核心事件总线消息（可被子类扩展）"""
-        self.event_bus.subscribe(EventType.USER_INPUT, self._handle_user_input)
         self.event_bus.subscribe(EventType.CLEAR_HISTORY, self.clear_display)
 
         self.event_bus.subscribe(EventType.STREAM_START, self.handle_stream_start)
@@ -139,6 +138,6 @@ class BaseFrontend(ABC):
         pass
 
     @abstractmethod
-    def _handle_user_input(self, data: dict[str, Any]):
+    def handle_user_input(self,user_input:str):
         """处理原始用户输入事件（预处理后转给具体处理器）"""
         pass

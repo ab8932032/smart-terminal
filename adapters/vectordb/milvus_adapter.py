@@ -25,7 +25,6 @@ class MilvusAdapter(BaseVectorDBAdapter):
         """
 
         super().__init__(config,codebase_path)
-        self.text_processor = TextProcessor()
         self._init_components()
     
     def get_search_params(self, search_type: str) -> dict:
@@ -87,9 +86,9 @@ class MilvusAdapter(BaseVectorDBAdapter):
             FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
             FieldSchema(name="filename", dtype=DataType.VARCHAR, max_length=255),
             FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, 
-                      dim=self.text_processor.model.get_sentence_embedding_dimension()),
+                      dim=self.text_processor.embeddings._client.get_sentence_embedding_dimension()),
             FieldSchema(name="text", dtype=DataType.VARCHAR, 
-                      max_length=self.text_processor.model.max_seq_length*5, enable_analyzer=True),
+                      max_length=self.text_processor.embeddings._client.max_seq_length*5, enable_analyzer=True),
             FieldSchema(name="sparse", dtype=DataType.SPARSE_FLOAT_VECTOR)
         ]
 
@@ -152,9 +151,9 @@ class MilvusAdapter(BaseVectorDBAdapter):
         print(f"[Milvus] 成功插入 {len(entities)} 条数据")
 
     def create_dense_search_request(self, query_text, top_k):
-        _, embeddings = self.text_processor.chunk_text(query_text)
+        embeddings = self.text_processor.embeddings.embed_query(query_text)
         return AnnSearchRequest(
-            data=embeddings,
+            data=[embeddings],
             anns_field="embedding",
             param=self.config["index_params"]["dense"]["search_params"],
             limit=top_k

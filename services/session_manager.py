@@ -52,9 +52,11 @@ class SessionManager:
             }
         return session_id
 
-    def add_message(self, session_id: str, role: str, content: str,thought: str = None, metadata: dict = None):
+    def add_message(self, session_id: str, role: str, content: str,thought: str = None, summary:str = None, metadata: dict = None):
         """
         添加消息到指定会话
+        :param summary: 
+        :param thought: 
         :param session_id: 会话ID
         :param role: 角色（user/assistant）
         :param content: 消息内容
@@ -70,6 +72,7 @@ class SessionManager:
                 "content": content,
                 "thought": thought or "",
                 "metadata": metadata or {},
+                "summary": summary or "",
                 "timestamp": datetime.now().isoformat()
             })
             self._auto_save(session_id)
@@ -90,7 +93,6 @@ class SessionManager:
 
             self.logger.info(f"Getting history finish for session {session_id}: {history}")
             return history[-max_length:]
-
     def clear_history(self, session_id: str):
         """
         清空指定会话历史
